@@ -3,6 +3,50 @@
 
 local Types = {}
 
+-- ---------------------------------------------------------------------------
+-- Helpers
+-- ---------------------------------------------------------------------------
+
+-- Resolve a live Instance from a fullName string like "MaterialService.MyVariant".
+-- Returns the Instance or nil.
+local function resolveByFullName(fullName: string): Instance?
+	if not fullName or fullName == "" then return nil end
+
+	-- Strip leading "game." prefix if present
+	local path = fullName:gsub("^game%.", "")
+
+	local parts = {}
+	for part in path:gmatch("[^%.]+") do
+		table.insert(parts, part)
+	end
+	if #parts == 0 then return nil end
+
+	-- First segment: try as a service name, then as a direct child of game
+	local current: Instance = game
+	for i, name in ipairs(parts) do
+		local next: Instance?
+		if current == game then
+			-- Try GetService first so "MaterialService", "Workspace", etc. resolve correctly
+			local ok, svc = pcall(function() return game:GetService(name) end)
+			if ok and svc then
+				next = svc
+			else
+				next = current:FindFirstChild(name)
+			end
+		else
+			next = current:FindFirstChild(name)
+		end
+		if not next then return nil end
+		current = next
+	end
+
+	return current
+end
+
+-- ---------------------------------------------------------------------------
+-- Serialization
+-- ---------------------------------------------------------------------------
+
 function Types.serializeValue(value)
 	if value == nil then return nil end
 
@@ -50,7 +94,15 @@ function Types.serializeValue(value)
 	elseif t == "Ray" then
 		return { _type = "Ray", origin = { x = value.Origin.X, y = value.Origin.Y, z = value.Origin.Z }, direction = { x = value.Direction.X, y = value.Direction.Y, z = value.Direction.Z } }
 	elseif t == "Instance" then
-		return { _type = "Instance", className = value.ClassName, name = value.Name, fullName = value:GetFullName() }
+		-- Serialize with enough info to re-resolve the live object later.
+		-- fullName is the primary lookup key; className helps the caller understand
+		-- what kind of instance is being referenced (e.g. "MaterialVariant").
+		return {
+			_type     = "Instance",
+			className = value.ClassName,
+			name      = value.Name,
+			fullName  = value:GetFullName(),
+		}
 	elseif t == "Axes" then
 		local axes = {}
 		if value.X then table.insert(axes, "X") end
@@ -73,6 +125,10 @@ function Types.serializeValue(value)
 	end
 end
 
+-- ---------------------------------------------------------------------------
+-- Deserialization
+-- ---------------------------------------------------------------------------
+
 function Types.deserializeValue(value)
 	if type(value) ~= "table" then return value end
 	local vtype = value._type
@@ -94,8 +150,8 @@ function Types.deserializeValue(value)
 		if value.components and #value.components == 12 then
 			return CFrame.new(unpack(value.components))
 		elseif value.position and value.lookAt then
-			local pos = Vector3.new(value.position.x or 0, value.position.y or 0, value.position.z or 0)
-			local look = Vector3.new(value.lookAt.x or 0, value.lookAt.y or 0, value.lookAt.z or 0)
+			local pos  = Vector3.new(value.position.x or 0, value.position.y or 0, value.position.z or 0)
+			local look = Vector3.new(value.lookAt.x  or 0, value.lookAt.y  or 0, value.lookAt.z  or 0)
 			return CFrame.lookAt(pos, look)
 		elseif value.x and value.y and value.z then
 			return CFrame.new(value.x, value.y, value.z)
@@ -105,7 +161,8 @@ function Types.deserializeValue(value)
 	elseif vtype == "UDim2" then
 		return UDim2.new(value.xScale or 0, value.xOffset or 0, value.yScale or 0, value.yOffset or 0)
 	elseif vtype == "BrickColor" then
-		if value.name then return BrickColor.new(value.name) elseif value.number then return BrickColor.new(value.number) end
+		if value.name   then return BrickColor.new(value.name)   end
+		if value.number then return BrickColor.new(value.number) end
 	elseif vtype == "EnumItem" then
 		if value.enumType and value.name then
 			local ok, enumType = pcall(function() return Enum[value.enumType] end)
@@ -128,7 +185,7 @@ function Types.deserializeValue(value)
 		if value.keypoints then
 			local kps = {}
 			for _, kp in ipairs(value.keypoints) do
-				local c = kp.color
+				local c     = kp.color
 				local color = (c.r > 1 or c.g > 1 or c.b > 1) and Color3.fromRGB(c.r, c.g, c.b) or Color3.new(c.r, c.g, c.b)
 				table.insert(kps, ColorSequenceKeypoint.new(kp.time, color))
 			end
@@ -137,22 +194,76 @@ function Types.deserializeValue(value)
 	elseif vtype == "Rect" then
 		return Rect.new(value.minX or 0, value.minY or 0, value.maxX or 0, value.maxY or 0)
 	elseif vtype == "PhysicalProperties" then
-		return PhysicalProperties.new(value.density or 1, value.friction or 0.3, value.elasticity or 0.5, value.frictionWeight or 1, value.elasticityWeight or 1)
+		return PhysicalProperties.new(
+			value.density          or 1,
+			value.friction         or 0.3,
+			value.elasticity       or 0.5,
+			value.frictionWeight   or 1,
+			value.elasticityWeight or 1
+		)
 	elseif vtype == "Ray" then
-		return Ray.new(Vector3.new(value.origin.x or 0, value.origin.y or 0, value.origin.z or 0), Vector3.new(value.direction.x or 0, value.direction.y or 0, value.direction.z or 0))
+		return Ray.new(
+			Vector3.new(value.origin.x    or 0, value.origin.y    or 0, value.origin.z    or 0),
+			Vector3.new(value.direction.x or 0, value.direction.y or 0, value.direction.z or 0)
+		)
 	elseif vtype == "Font" then
 		local family = value.family or "rbxasset://fonts/families/SourceSansPro.json"
 		local weight = Enum.FontWeight[value.weight or "Regular"] or Enum.FontWeight.Regular
-		local style = Enum.FontStyle[value.style or "Normal"] or Enum.FontStyle.Normal
+		local style  = Enum.FontStyle[value.style   or "Normal"]  or Enum.FontStyle.Normal
 		return Font.new(family, weight, style)
 	elseif vtype == "Axes" then
 		local args = {}
-		if value.axes then for _, a in ipairs(value.axes) do if Enum.Axis[a] then table.insert(args, Enum.Axis[a]) end end end
+		if value.axes then
+			for _, a in ipairs(value.axes) do
+				if Enum.Axis[a] then table.insert(args, Enum.Axis[a]) end
+			end
+		end
 		return Axes.new(unpack(args))
 	elseif vtype == "Faces" then
 		local args = {}
-		if value.faces then for _, f in ipairs(value.faces) do if Enum.NormalId[f] then table.insert(args, Enum.NormalId[f]) end end end
+		if value.faces then
+			for _, f in ipairs(value.faces) do
+				if Enum.NormalId[f] then table.insert(args, Enum.NormalId[f]) end
+			end
+		end
 		return Faces.new(unpack(args))
+
+	elseif vtype == "Instance" then
+		-- Resolve a live Instance by its fullName path.
+		-- Supports three forms the caller may provide:
+		--   1. fullName  – e.g. "MaterialService.MyVariant"  (preferred)
+		--   2. path      – alias for fullName
+		--   3. name      – bare name; tried as a child of every likely parent
+		--                  (MaterialService, Workspace, game) as a last resort
+
+		-- Form 1 / 2: fullName or path
+		local fullName = value.fullName or value.path
+		if fullName then
+			local inst = resolveByFullName(fullName)
+			if inst then return inst end
+		end
+
+		-- Form 3: bare name with optional className hint —
+		-- try MaterialService first (covers the MaterialVariant case), then game
+		if value.name then
+			local candidates = {
+				function() return game:GetService("MaterialService"):FindFirstChild(value.name) end,
+				function() return game:FindFirstChild(value.name, true) end,
+			}
+			for _, try in ipairs(candidates) do
+				local ok, inst = pcall(try)
+				if ok and inst then
+					-- If caller gave a className hint, make sure it matches
+					if not value.className or inst.ClassName == value.className then
+						return inst
+					end
+				end
+			end
+		end
+
+		-- Could not resolve – return nil so the property assignment is skipped
+		-- rather than writing a raw table to the property.
+		return nil
 	end
 
 	return value
