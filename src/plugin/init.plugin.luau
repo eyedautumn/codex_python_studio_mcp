@@ -4,14 +4,14 @@
 
 local HttpService = game:GetService("HttpService")
 
-local Logger        = require(script.Utils.Logger)
-local InstanceTools = require(script.Tools.InstanceTools)
-local PropertyTools = require(script.Tools.PropertyTools)
-local TagTools      = require(script.Tools.TagTools)
-local ScriptTools   = require(script.Tools.ScriptTools)
-local EditorTools   = require(script.Tools.EditorTools)
-local HistoryTools  = require(script.Tools.HistoryTools)
-local StudioTools   = require(script.Tools.StudioTools)
+local Logger        = require(script.Parent.Utils.Logger)
+local InstanceTools = require(script.Parent.Tools.InstanceTools)
+local PropertyTools = require(script.Parent.Tools.PropertyTools)
+local TagTools      = require(script.Parent.Tools.TagTools)
+local ScriptTools   = require(script.Parent.Tools.ScriptTools)
+local EditorTools   = require(script.Parent.Tools.EditorTools)
+local HistoryTools  = require(script.Parent.Tools.HistoryTools)
+local StudioTools   = require(script.Parent.Tools.StudioTools)
 
 local BRIDGE_URL         = "http://127.0.0.1:28650"
 local CLIENT_ID          = "studio"
