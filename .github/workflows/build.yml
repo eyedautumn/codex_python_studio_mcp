@@ -3,15 +3,18 @@ name: Build Plugin
 on:
   push:
     branches: [main, master]
+    tags:
+      - "v*.*.*"
   pull_request:
     branches: [main, master]
-  release:
-    types: [created]
 
 jobs:
   build:
     name: Build .rbxm
     runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout repository
@@ -36,8 +39,10 @@ jobs:
           path: RobloxMcpBridge.rbxm
           retention-days: 30
 
-      - name: Upload to release
-        if: github.event_name == 'release'
+      # Runs only when you push a tag like: git tag v1.0.0 && git push --tags
+      - name: Create GitHub Release
+        if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v2
         with:
           files: RobloxMcpBridge.rbxm
+          generate_release_notes: true
