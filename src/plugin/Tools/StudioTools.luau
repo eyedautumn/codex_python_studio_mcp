@@ -6,6 +6,85 @@ local InsertService     = game:GetService("InsertService")
 local LogService        = game:GetService("LogService")
 local StudioTestService = game:GetService("StudioTestService")
 
+---------------------------------------------------------------------------
+-- Insert model helpers (mirrors official Roblox MCP plugin approach)
+---------------------------------------------------------------------------
+local INSERT_MAX_SEARCH_DEPTH = 2048
+local INSERT_MAX_DISTANCE_AWAY = 20
+
+-- Raycast from the centre of the current camera viewport to find a good
+-- world-space insertion point, falling back to a point directly in front.
+local function getInsertPosition()
+	local camera = workspace.CurrentCamera
+	local vp = camera.ViewportSize / 2
+	local unitRay = camera:ViewportPointToRay(vp.X, vp.Y, 0)
+	local params = RaycastParams.new()
+	params.BruteForceAllSlow = true
+	local result = workspace:Raycast(unitRay.Origin, unitRay.Direction * INSERT_MAX_SEARCH_DEPTH, params)
+	if result then
+		return result.Position
+	else
+		return camera.CFrame.Position + unitRay.Direction * INSERT_MAX_DISTANCE_AWAY
+	end
+end
+
+-- Convert a query string to TitleCase with no spaces (e.g. "red car" → "RedCar")
+local function toTitleCase(str)
+	local result = str:gsub("(%a)([%w_']*)", function(first, rest)
+		return first:upper() .. rest:lower()
+	end)
+	return result:gsub("%s+", "")
+end
+
+-- Group a list of loaded objects into a single container.
+-- Physical objects (PVInstances) → Model; multiple non-physical → Folder; single → as-is.
+local function collapseIntoContainer(objects)
+	if #objects == 0 then return nil end
+	local hasPhysical = false
+	for _, obj in ipairs(objects) do
+		if obj:IsA("PVInstance") then hasPhysical = true; break end
+	end
+	if hasPhysical then
+		local model = Instance.new("Model")
+		for _, obj in ipairs(objects) do obj.Parent = model end
+		return model
+	end
+	if #objects > 1 then
+		local folder = Instance.new("Folder")
+		for _, obj in ipairs(objects) do obj.Parent = folder end
+		return folder
+	end
+	return objects[1]
+end
+
+-- Load an asset by numeric ID using game:GetObjects (more reliable than LoadAsset).
+local function loadAssetById(assetId)
+	local objects = game:GetObjects("rbxassetid://" .. tostring(assetId))
+	return collapseIntoContainer(objects)
+end
+
+-- Search the Marketplace for free models matching a query; returns up to 6 asset IDs.
+local function searchFreeModels(query)
+	local ok, results = pcall(function()
+		return InsertService:GetFreeModels(query, 0)
+	end)
+	if not ok or not results or not results[1] then return {} end
+	local ids = {}
+	for i, item in ipairs(results[1].Results or {}) do
+		if i > 6 then break end
+		table.insert(ids, item.AssetId)
+	end
+	return ids
+end
+
+-- Return a workspace-unique name based on a base name.
+local function uniqueWorkspaceName(base)
+	if not workspace:FindFirstChild(base) then return base end
+	local i = 1
+	while workspace:FindFirstChild(base .. i) do i += 1 end
+	return base .. i
+end
+
 local History = require(script.Parent.Parent.Utils.History)
 
 local StudioTools = {}
@@ -111,17 +190,55 @@ function StudioTools.run_code(args)
 end
 
 function StudioTools.insert_model(args)
+	-- Accepts either a direct asset ID or a search query string.
+	-- query / assetId are both valid arg names.
+	local query   = args.query or args.name or args.search
 	local assetId = tonumber(args.assetId or args.asset_id or args.id or args.asset)
-	if not assetId then return nil, "Missing assetId" end
-	local recording = History.recordUndo("MCP: Insert asset " .. tostring(assetId))
-	local ok, inserted = pcall(function() return InsertService:LoadAsset(assetId) end)
-	if not ok then History.finishUndo(recording, false); return nil, tostring(inserted) end
-	if not inserted then History.finishUndo(recording, false); return nil, "InsertService returned nothing" end
-	inserted.Parent = workspace
+
+	if not query and not assetId then
+		return nil, "Provide either 'query' (search string) or 'assetId' (numeric ID)"
+	end
+
+	local recording = History.recordUndo("MCP: Insert model")
+
+	-- Resolve asset ID from search if not provided directly
+	if not assetId then
+		local ids = searchFreeModels(query)
+		if #ids == 0 then
+			History.finishUndo(recording, false)
+			return nil, "No free models found for query: " .. tostring(query)
+		end
+		assetId = ids[1]
+	end
+
+	-- Load via game:GetObjects (handles both free models and private assets)
+	local ok, instance = pcall(loadAssetById, assetId)
+	if not ok or not instance then
+		History.finishUndo(recording, false)
+		return nil, "Failed to load asset " .. tostring(assetId) .. ": " .. tostring(instance)
+	end
+
+	-- Give it a clean workspace-unique name
+	local baseName = query and toTitleCase(query) or ("Asset" .. tostring(assetId))
+	instance.Name  = uniqueWorkspaceName(baseName)
+	instance.Parent = workspace
+
+	-- Place physical models at the camera look-at point
+	if instance:IsA("Model") then
+		local ok2 = pcall(function()
+			instance:PivotTo(CFrame.new(getInsertPosition()))
+		end)
+		if not ok2 then
+			-- PivotTo failed (e.g. no primary part yet) — silently ignore
+		end
+	end
+
 	History.finishUndo(recording, true)
 
 	local Instances = require(script.Parent.Parent.Utils.Instances)
-	return Instances.serializeInstance(inserted)
+	local info = Instances.serializeInstance(instance)
+	info.assetId = assetId
+	return info
 end
 
 function StudioTools.get_console_output(args)
