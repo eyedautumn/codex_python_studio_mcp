@@ -1,0 +1,13 @@
+{
+  "name": "RobloxMcpBridge",
+  "tree": {
+    "$className": "Script",
+    "$path": "src/plugin/main.luau",
+    "Tools": {
+      "$path": "src/plugin/Tools"
+    },
+    "Utils": {
+      "$path": "src/plugin/Utils"
+    }
+  }
+}
