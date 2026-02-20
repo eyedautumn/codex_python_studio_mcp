@@ -35,7 +35,7 @@ function PropertyTools.get_all_properties(args)
 
 	local result, skipped = {}, {}
 	for _, prop in ipairs(reflected) do
-		local name = prop.Name
+		local name       = prop.Name
 		local deprecated = prop.Display and prop.Display.DeprecationMessage and prop.Display.DeprecationMessage ~= ""
 		if not deprecated then
 			local ok, value = pcall(function() return inst[name] end)
@@ -54,12 +54,29 @@ end
 function PropertyTools.set_properties(args)
 	local inst = Instances.resolveInstance(args)
 	if not inst then return nil, "Instance not found" end
+
 	local recording = History.recordUndo("MCP: Set properties on " .. inst.Name)
 	local errors = {}
-	for key, value in pairs(args.properties or {}) do
-		local ok, err = pcall(function() inst[key] = Types.deserializeValue(value) end)
-		if not ok then table.insert(errors, key .. ": " .. tostring(err)) end
+
+	for key, rawValue in pairs(args.properties or {}) do
+		-- Deserialize first so we can detect unresolvable Instance refs before
+		-- attempting the property write.  An unresolvable Instance returns nil
+		-- from deserializeValue; we report that as a warning instead of writing
+		-- nil to the property (which would throw or silently no-op).
+		local deserialized = Types.deserializeValue(rawValue)
+
+		if deserialized == nil and type(rawValue) == "table" and rawValue._type == "Instance" then
+			-- The caller supplied an Instance ref but we couldn't resolve it.
+			local hint = rawValue.fullName or rawValue.path or rawValue.name or "?"
+			table.insert(errors, key .. ": could not resolve Instance '" .. hint .. "' — check that it exists in the DataModel")
+		else
+			local ok, err = pcall(function() inst[key] = deserialized end)
+			if not ok then
+				table.insert(errors, key .. ": " .. tostring(err))
+			end
+		end
 	end
+
 	History.finishUndo(recording, true)
 	return #errors > 0 and { ok = true, warnings = errors } or { ok = true }
 end
