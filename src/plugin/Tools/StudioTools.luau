@@ -1,10 +1,11 @@
 -- Tools/StudioTools.luau
 -- Tools for play mode control, code execution, model insertion, and console output
 
-local HttpService       = game:GetService("HttpService")
-local InsertService     = game:GetService("InsertService")
-local LogService        = game:GetService("LogService")
-local StudioTestService = game:GetService("StudioTestService")
+local HttpService        = game:GetService("HttpService")
+local InsertService      = game:GetService("InsertService")
+local LogService         = game:GetService("LogService")
+local ServerScriptService = game:GetService("ServerScriptService")
+local StudioTestService  = game:GetService("StudioTestService")
 
 ---------------------------------------------------------------------------
 -- Insert model helpers (mirrors official Roblox MCP plugin approach)
@@ -12,8 +13,6 @@ local StudioTestService = game:GetService("StudioTestService")
 local INSERT_MAX_SEARCH_DEPTH = 2048
 local INSERT_MAX_DISTANCE_AWAY = 20
 
--- Raycast from the centre of the current camera viewport to find a good
--- world-space insertion point, falling back to a point directly in front.
 local function getInsertPosition()
 	local camera = workspace.CurrentCamera
 	local vp = camera.ViewportSize / 2
@@ -28,7 +27,6 @@ local function getInsertPosition()
 	end
 end
 
--- Convert a query string to TitleCase with no spaces (e.g. "red car" → "RedCar")
 local function toTitleCase(str)
 	local result = str:gsub("(%a)([%w_']*)", function(first, rest)
 		return first:upper() .. rest:lower()
@@ -36,8 +34,6 @@ local function toTitleCase(str)
 	return result:gsub("%s+", "")
 end
 
--- Group a list of loaded objects into a single container.
--- Physical objects (PVInstances) → Model; multiple non-physical → Folder; single → as-is.
 local function collapseIntoContainer(objects)
 	if #objects == 0 then return nil end
 	local hasPhysical = false
@@ -57,13 +53,11 @@ local function collapseIntoContainer(objects)
 	return objects[1]
 end
 
--- Load an asset by numeric ID using game:GetObjects (more reliable than LoadAsset).
 local function loadAssetById(assetId)
 	local objects = game:GetObjects("rbxassetid://" .. tostring(assetId))
 	return collapseIntoContainer(objects)
 end
 
--- Search the Marketplace for free models matching a query; returns up to 6 asset IDs.
 local function searchFreeModels(query)
 	local ok, results = pcall(function()
 		return InsertService:GetFreeModels(query, 0)
@@ -77,7 +71,6 @@ local function searchFreeModels(query)
 	return ids
 end
 
--- Return a workspace-unique name based on a base name.
 local function uniqueWorkspaceName(base)
 	if not workspace:FindFirstChild(base) then return base end
 	local i = 1
@@ -113,85 +106,238 @@ local function currentRunMode() return STUDIO_MODE end
 local function isStudioPlayMode(mode) return (mode or currentRunMode()) == "start_play" end
 
 ---------------------------------------------------------------------------
--- Code execution helpers
+-- run_code helpers  (mirrors official MCP plugin approach)
 ---------------------------------------------------------------------------
-local function compileLuaChunk(code, chunkName)
-	if load then return load(code, chunkName, "t", _G) end
-	if loadstring then
-		local chunk, err = loadstring(code)
-		if chunk and setfenv then setfenv(chunk, _G) end
-		return chunk, err
+
+local MESSAGE_TYPE_MAP = {
+	[Enum.MessageType.MessageOutput]  = "[OUTPUT]",
+	[Enum.MessageType.MessageInfo]    = "[OUTPUT]",
+	[Enum.MessageType.MessageWarning] = "[WARNING]",
+	[Enum.MessageType.MessageError]   = "[ERROR]",
+}
+
+local function getTableType(arg)
+	local hasArray, hasTable = false, false
+	for key in arg do
+		if typeof(key) == "number" then hasArray = true
+		else hasTable = true end
+		if hasArray and hasTable then break end
 	end
-	return nil, "load/loadstring is unavailable in this Studio build"
+	return hasArray, hasTable
 end
 
-local function argumentToString(value)
-	if value == nil then return "nil" end
-	if typeof(value) == "table" then
-		local ok, encoded = pcall(function() return HttpService:JSONEncode(value) end)
-		if ok then return encoded end
+local function serializeArg(arg): any
+	if typeof(arg) == "table" then
+		local _, isTable = getTableType(arg)
+		local out = {}
+		for k, v in arg do
+			local newKey = serializeArg(k)
+			out[if isTable then tostring(newKey) else newKey] = serializeArg(v)
+		end
+		return out
+	elseif type(arg) == "userdata" then
+		return tostring(arg) or "UNABLE_TO_SERIALIZE"
 	end
-	return tostring(value)
+	return arg
 end
 
-local function toStringList(pack)
-	local out = {}
-	for i = 1, pack.n do out[i] = argumentToString(pack[i]) end
+local function deepClone(t, cache)
+	local clone = {}
+	for key, value in t do
+		local newKey = key
+		if typeof(key) == "table" then
+			if not cache[key] then cache[key] = deepClone(key, cache) end
+			newKey = cache[key]
+		end
+		local newValue = value
+		if typeof(value) == "table" then
+			if not cache[value] then cache[value] = deepClone(value, cache) end
+			newValue = cache[value]
+		end
+		clone[newKey] = newValue
+	end
+	return clone
+end
+
+local function toStrTable(t: { any }): { string }
+	local cloned = deepClone(t, {})
+	local out = table.create(#cloned)
+	for i, arg in cloned do
+		local s = serializeArg(arg)
+		out[i] = if typeof(s) == "table" then HttpService:JSONEncode(s) else s
+	end
 	return out
 end
 
-local function addToOutput(output, header, pack)
-	return output .. header .. " " .. table.concat(toStringList(pack), "\t") .. "\n"
+local function addToOutput(output: string, header: string, ...): string
+	local parts = toStrTable(table.pack(...))
+	return output .. header .. " " .. table.concat(parts, "\t") .. "\n"
 end
 
-local function runChunkWithOutput(chunk)
+local function runCodeWithOutput(command: string): string
 	local output = ""
-	local chunkEnv = (getfenv and getfenv(chunk)) or _G
-	local backup   = { print = chunkEnv.print, warn = chunkEnv.warn, error = chunkEnv.error }
 
-	local function wrapFn(header, original)
-		return function(...)
-			output = addToOutput(output, header, table.pack(...))
-			if original then original(...) end
-		end
-	end
+	local function executeCode()
+		local chunk = loadstring(command) :: any
+		local env = getfenv(chunk)
 
-	local function run()
-		chunkEnv.print = wrapFn("[OUTPUT]", backup.print or print)
-		chunkEnv.warn  = wrapFn("[WARNING]", backup.warn or warn)
-		chunkEnv.error = function(...)
-			output = addToOutput(output, "[ERROR]", table.pack(...))
-			local errFn = backup.error or error
-			return errFn(...)
+		local oldPrint = env.print or print
+		env.print = function(...)
+			oldPrint(...)
+			output = addToOutput(output, "[OUTPUT]", ...)
 		end
+
+		local oldWarn = env.warn or warn
+		env.warn = function(...)
+			oldWarn(...)
+			output = addToOutput(output, "[WARNING]", ...)
+		end
+
+		local oldError = env.error or error
+		env.error = function(...)
+			oldError(...)
+			output = addToOutput(output, "[ERROR]", ...)
+		end
+
 		local results = table.pack(chunk())
 		if results.n > 0 then
-			output = addToOutput(output, "[RETURNED RESULTS]", table.pack(table.unpack(results, 1, results.n)))
+			output = addToOutput(output, "[RETURNED RESULTS]", table.unpack(results, 1, results.n))
 		end
-		return output
 	end
 
-	local ok, err = pcall(run)
-	-- Restore env
-	for key, value in pairs(backup) do chunkEnv[key] = value end
-	if not ok then output = addToOutput(output, "[UNEXPECTED ERROR]", table.pack(err)) end
+	local ok, err = pcall(executeCode)
+	if not ok then
+		output = addToOutput(output, "[UNEXPECTED ERROR]", err)
+	end
 	return output
+end
+
+---------------------------------------------------------------------------
+-- run_script_in_play_mode helpers  (mirrors official MCP plugin approach)
+---------------------------------------------------------------------------
+
+local TEST_SCRIPT_NAME = "AssistantTestScript"
+
+local function buildTestRunnerSource(userCode: string, timeout: number): string
+	local timeoutStr = tostring(timeout)
+	return [[
+local StudioTestService = game:GetService("StudioTestService")
+local LogService        = game:GetService("LogService")
+local RunService        = game:GetService("RunService")
+if not RunService:IsRunning() then return end
+
+local capturedLogs = {}
+local logConnection
+
+local MESSAGE_TYPE_MAP = {
+	[Enum.MessageType.MessageOutput]  = "output",
+	[Enum.MessageType.MessageInfo]    = "info",
+	[Enum.MessageType.MessageWarning] = "warning",
+	[Enum.MessageType.MessageError]   = "error",
+}
+
+logConnection = LogService.MessageOut:Connect(function(message, messageType)
+	if string.sub(message, 1, 5) == "[MCP]" then return end
+	table.insert(capturedLogs, {
+		level   = MESSAGE_TYPE_MAP[messageType] or "output",
+		message = message,
+		ts      = os.clock(),
+	})
+end)
+
+local startTime = os.clock()
+local isTimeout = false
+
+local function endTest(ok, result)
+	local duration = os.clock() - startTime
+	task.wait(0.1)
+	if logConnection then logConnection:Disconnect() end
+	local errors = {}
+	for _, log in ipairs(capturedLogs) do
+		if log.level == "error" or log.level == "warning" then
+			table.insert(errors, log)
+		end
+	end
+	StudioTestService:EndTest({
+		success   = ok,
+		value     = if ok then tostring(result) else nil,
+		error     = if not ok then tostring(result) else nil,
+		logs      = capturedLogs,
+		errors    = errors,
+		duration  = duration,
+		isTimeout = isTimeout,
+	})
+end
+
+task.spawn(function()
+	task.wait(]] .. timeoutStr .. [[)
+	isTimeout = true
+	endTest(false, "timeout")
+end)
+
+local ok, result = pcall(function()
+]] .. userCode .. [[
+end)
+endTest(ok, result)
+]]
+end
+
+local function removeTestScript()
+	local s = ServerScriptService:FindFirstChild(TEST_SCRIPT_NAME)
+	if s then s:Destroy() end
+end
+
+local function injectTestScript(code: string, timeout: number)
+	removeTestScript()
+	local src = buildTestRunnerSource(code, timeout)
+	local s = Instance.new("Script")
+	s.Name   = TEST_SCRIPT_NAME
+	s.Source = src
+	s.Parent = ServerScriptService
 end
 
 ---------------------------------------------------------------------------
 -- Public tool functions
 ---------------------------------------------------------------------------
+
 function StudioTools.run_code(args)
 	local code = args.code or args.script or args.source
 	if not code or code == "" then return nil, "Missing code argument" end
-	local chunk, err = compileLuaChunk(code, "MCP.run_code")
-	if not chunk then return nil, err end
-	return { result = runChunkWithOutput(chunk) }
+	return { result = runCodeWithOutput(code) }
+end
+
+function StudioTools.run_script_in_play_mode(args)
+	local code = args.code or args.script or args.source
+	if not code or code == "" then return nil, "Missing code argument" end
+
+	local timeout = args.timeout or 1_000_000
+	if type(timeout) ~= "number" or timeout < 0 then
+		return nil, "Timeout must be a positive number"
+	end
+
+	injectTestScript(code, timeout)
+
+	local success, result = pcall(function()
+		if args.mode == "run_server" then
+			STUDIO_MODE = "run_server"
+			return StudioTestService:ExecuteRunModeAsync({})
+		else
+			STUDIO_MODE = "start_play"
+			return StudioTestService:ExecutePlayModeAsync({})
+		end
+	end)
+
+	STUDIO_MODE = "stop"
+	removeTestScript()
+
+	if not success then
+		return nil, "Failed to run script in play mode: " .. tostring(result)
+	end
+
+	return { result = HttpService:JSONEncode(result) }
 end
 
 function StudioTools.insert_model(args)
-	-- Accepts either a direct asset ID or a search query string.
-	-- query / assetId are both valid arg names.
 	local query   = args.query or args.name or args.search
 	local assetId = tonumber(args.assetId or args.asset_id or args.id or args.asset)
 
@@ -201,7 +347,6 @@ function StudioTools.insert_model(args)
 
 	local recording = History.recordUndo("MCP: Insert model")
 
-	-- Resolve asset ID from search if not provided directly
 	if not assetId then
 		local ids = searchFreeModels(query)
 		if #ids == 0 then
@@ -211,26 +356,18 @@ function StudioTools.insert_model(args)
 		assetId = ids[1]
 	end
 
-	-- Load via game:GetObjects (handles both free models and private assets)
 	local ok, instance = pcall(loadAssetById, assetId)
 	if not ok or not instance then
 		History.finishUndo(recording, false)
 		return nil, "Failed to load asset " .. tostring(assetId) .. ": " .. tostring(instance)
 	end
 
-	-- Give it a clean workspace-unique name
 	local baseName = query and toTitleCase(query) or ("Asset" .. tostring(assetId))
-	instance.Name  = uniqueWorkspaceName(baseName)
+	instance.Name   = uniqueWorkspaceName(baseName)
 	instance.Parent = workspace
 
-	-- Place physical models at the camera look-at point
 	if instance:IsA("Model") then
-		local ok2 = pcall(function()
-			instance:PivotTo(CFrame.new(getInsertPosition()))
-		end)
-		if not ok2 then
-			-- PivotTo failed (e.g. no primary part yet) — silently ignore
-		end
+		pcall(function() instance:PivotTo(CFrame.new(getInsertPosition())) end)
 	end
 
 	History.finishUndo(recording, true)
@@ -283,15 +420,6 @@ end
 function StudioTools.get_studio_mode()
 	local mode = currentRunMode()
 	return { mode = mode or "Unknown", isPlay = isStudioPlayMode(mode) }
-end
-
-function StudioTools.run_script_in_play_mode(args)
-	if not isStudioPlayMode() then return nil, "Studio must be in Play or Run mode" end
-	local code = args.code or args.script or args.source
-	if not code or code == "" then return nil, "Missing code argument" end
-	local chunk, err = compileLuaChunk(code, "MCP.run_script_in_play_mode")
-	if not chunk then return nil, err end
-	return { result = runChunkWithOutput(chunk) }
 end
 
 return StudioTools
