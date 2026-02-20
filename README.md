@@ -1,4 +1,4 @@
-# Roblox Studio MCP Bridge Plugin
+# Roblox Studio MCP Bridge
 
 ![Build](https://github.com/eyedautumn/codex_python_studio_mcp/actions/workflows/build.yml/badge.svg)
 
