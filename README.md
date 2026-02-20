@@ -1,6 +1,30 @@
 # Roblox Studio MCP Bridge Plugin
 
+![Build](https://github.com/YOUR_USERNAME/YOUR_REPO/actions/workflows/build.yml/badge.svg)
+
 A Roblox Studio plugin that bridges Studio to an external MCP (Model Context Protocol) server over HTTP, enabling AI tools to read and manipulate your game's hierarchy, scripts, properties, and more.
+
+## Installation (pre-built)
+
+1. Go to the [**Releases**](../../releases) page and download `RobloxMcpBridge.rbxm`.  
+   — or —  
+   Download the latest build artifact from [**Actions**](../../actions) (no release required).
+2. Place `RobloxMcpBridge.rbxm` in your Roblox **Plugins** folder:
+   - **Windows:** `%LOCALAPPDATA%\Roblox\Plugins\`
+   - **macOS:** `~/Documents/Roblox/Plugins/`
+3. Open Roblox Studio. The **Roblox MCP** toolbar button will appear.
+4. Enable **HTTP Requests** in *Game Settings → Security* (the plugin will attempt this automatically).
+5. Start your MCP bridge server on `http://127.0.0.1:28650`.
+6. Click **Start Bridge Polling** in the plugin widget.
+
+## Building locally (Rojo)
+
+```bash
+# Install Rojo (https://rojo.space)
+rojo build default.project.json --output RobloxMcpBridge.rbxm
+```
+
+The `default.project.json` maps `src/plugin/main.luau` as the root Script, with `Tools/` and `Utils/` as child ModuleScripts — matching how `require(script.Tools.*)` resolves at runtime.
 
 ## Project Structure
 
@@ -22,15 +46,6 @@ src/plugin/
     ├── Syntax.luau          # Lua syntax validation utilities
     └── Logger.luau          # Widget log panel helper
 ```
-
-## Setup
-
-1. Copy the contents of `src/plugin/` into your Roblox Plugins folder (preserving the `Tools/` and `Utils/` subdirectories).
-2. Rename `main.luau` to a `.lua` file if your Studio version requires it, or use a plugin build tool like [Rojo](https://rojo.space/).
-3. Open Roblox Studio. The **Roblox MCP** toolbar button will appear.
-4. Enable **HTTP Requests** in *Game Settings → Security* (the plugin will attempt this automatically).
-5. Start your MCP bridge server on `http://127.0.0.1:28650`.
-6. Click **Start Bridge Polling** in the plugin widget.
 
 ## Supported Tools
 
