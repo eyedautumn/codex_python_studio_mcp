@@ -18,11 +18,13 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install Rojo
-        uses: nicegui/setup-rojo@v1
-        with:
-          # Pin to a specific Rojo version for reproducible builds.
-          # Check https://github.com/rojo-rbx/rojo/releases for the latest.
-          version: "7.4.4"
+        run: |
+          ROJO_VERSION="7.4.4"
+          curl -L "https://github.com/rojo-rbx/rojo/releases/download/v${ROJO_VERSION}/rojo-${ROJO_VERSION}-linux-x86_64.zip" -o rojo.zip
+          unzip rojo.zip
+          chmod +x rojo
+          sudo mv rojo /usr/local/bin/rojo
+          rojo --version
 
       - name: Build plugin
         run: rojo build default.project.json --output RobloxMcpBridge.rbxm
@@ -34,7 +36,6 @@ jobs:
           path: RobloxMcpBridge.rbxm
           retention-days: 30
 
-      # Only attach to GitHub Releases
       - name: Upload to release
         if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2
