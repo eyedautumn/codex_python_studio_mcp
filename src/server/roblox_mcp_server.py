@@ -1,0 +1,896 @@
+#!/usr/bin/env python3
+"""
+Roblox Studio MCP Bridge Server v0.5
+- Rich type support (Color3, Vector3, CFrame, etc.)
+- ScriptEditorService integration (open/close/list scripts)
+- ChangeHistoryService integration (undo/redo/waypoints)
+- ThreadingHTTPServer for concurrent requests
+- Short server-side poll timeout
+- UUID-based job IDs
+"""
+import argparse
+import json
+import sys
+import threading
+import time
+import uuid
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from socketserver import ThreadingMixIn
+from urllib.parse import parse_qs, urlparse
+
+DEFAULT_CLIENT_ID = "studio"
+DEFAULT_HTTP_PORT = 28650
+DEFAULT_HTTP_BIND = ""
+DEFAULT_POLL_TIMEOUT_SEC = 5
+DEFAULT_JOB_TIMEOUT_SEC = 30
+
+
+def _json_response(handler, status, payload):
+    data = json.dumps(payload).encode("utf-8")
+    handler.send_response(status)
+    handler.send_header("Content-Type", "application/json")
+    handler.send_header("Content-Length", str(len(data)))
+    handler.end_headers()
+    handler.wfile.write(data)
+
+
+class JobQueue:
+    """Thread-safe job queue with per-client pending lists and result storage."""
+
+    def __init__(self):
+        self._pending: dict[str, list[dict]] = {}
+        self._results: dict[str, dict] = {}
+        self._last_seen: dict[str, float] = {}
+        self._cv = threading.Condition()
+
+    def mark_seen(self, client_id: str):
+        with self._cv:
+            self._last_seen[client_id] = time.time()
+            self._cv.notify_all()
+
+    def get_last_seen(self, client_id: str):
+        with self._cv:
+            return self._last_seen.get(client_id)
+
+    def is_connected(self, client_id: str, max_age: float = 15.0) -> bool:
+        with self._cv:
+            last = self._last_seen.get(client_id)
+            if last is None:
+                return False
+            return (time.time() - last) < max_age
+
+    def enqueue(self, client_id: str, job: dict):
+        with self._cv:
+            self._pending.setdefault(client_id, []).append(job)
+            self._cv.notify_all()
+
+    def wait_for_job(self, client_id: str, timeout_sec: float):
+        deadline = time.time() + timeout_sec
+        with self._cv:
+            while True:
+                queue = self._pending.get(client_id)
+                if queue:
+                    return queue.pop(0)
+                remaining = deadline - time.time()
+                if remaining <= 0:
+                    return None
+                self._cv.wait(timeout=remaining)
+
+    def store_result(self, job_id: str, result: dict):
+        with self._cv:
+            self._results[job_id] = result
+            self._cv.notify_all()
+
+    def wait_for_result(self, job_id: str, timeout_sec: float):
+        deadline = time.time() + timeout_sec
+        with self._cv:
+            while True:
+                if job_id in self._results:
+                    return self._results.pop(job_id)
+                remaining = deadline - time.time()
+                if remaining <= 0:
+                    return None
+                self._cv.wait(timeout=remaining)
+
+    def cancel_job(self, job_id: str):
+        with self._cv:
+            for client_id, queue in self._pending.items():
+                for i, job in enumerate(queue):
+                    if job.get("job_id") == job_id:
+                        queue.pop(i)
+                        return True
+            return False
+
+
+class RobloxBridgeHttpHandler(BaseHTTPRequestHandler):
+    server_version = "RobloxMcpBridge/0.5"
+
+    def do_GET(self):
+        parsed = urlparse(self.path)
+
+        if parsed.path == "/poll":
+            qs = parse_qs(parsed.query or "")
+            client_id = (qs.get("client_id") or [DEFAULT_CLIENT_ID])[0]
+            self.server.job_queue.mark_seen(client_id)
+            job = self.server.job_queue.wait_for_job(
+                client_id, self.server.poll_timeout_sec
+            )
+            _json_response(self, 200, {"ok": True, "job": job})
+            return
+
+        if parsed.path == "/ping":
+            qs = parse_qs(parsed.query or "")
+            client_id = (qs.get("client_id") or [DEFAULT_CLIENT_ID])[0]
+            self.server.job_queue.mark_seen(client_id)
+            _json_response(self, 200, {"ok": True, "server_time": time.time()})
+            return
+
+        if parsed.path == "/health":
+            _json_response(self, 200, {"ok": True, "uptime": time.time()})
+            return
+
+        _json_response(self, 404, {"ok": False, "error": "not_found"})
+
+    def do_POST(self):
+        parsed = urlparse(self.path)
+        if parsed.path != "/result":
+            _json_response(self, 404, {"ok": False, "error": "not_found"})
+            return
+
+        length = int(self.headers.get("Content-Length", "0") or "0")
+        raw = self.rfile.read(length) if length else b"{}"
+        try:
+            payload = json.loads(raw.decode("utf-8"))
+        except json.JSONDecodeError:
+            _json_response(self, 400, {"ok": False, "error": "invalid_json"})
+            return
+
+        job_id = payload.get("job_id")
+        if not job_id:
+            _json_response(self, 400, {"ok": False, "error": "missing_job_id"})
+            return
+
+        self.server.job_queue.store_result(job_id, payload)
+        _json_response(self, 200, {"ok": True})
+
+    def log_message(self, fmt, *args):
+        if not self.server.quiet:
+            super().log_message(fmt, *args)
+
+
+class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
+    daemon_threads = True
+
+
+class RobloxBridgeHttpServer(ThreadingHTTPServer):
+    def __init__(self, addr, handler, job_queue, poll_timeout_sec, quiet):
+        super().__init__(addr, handler)
+        self.job_queue = job_queue
+        self.poll_timeout_sec = poll_timeout_sec
+        self.quiet = quiet
+
+
+class McpServer:
+    def __init__(self, job_queue: JobQueue, job_timeout_sec: int):
+        self.job_queue = job_queue
+        self.job_timeout_sec = job_timeout_sec
+
+    def run(self):
+        for line in sys.stdin:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                msg = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+
+            if "method" in msg:
+                self._handle_request(msg)
+
+    def _send(self, payload):
+        sys.stdout.write(json.dumps(payload) + "\n")
+        sys.stdout.flush()
+
+    def _handle_request(self, msg):
+        method = msg.get("method")
+        msg_id = msg.get("id")
+
+        if method == "initialize":
+            result = {
+                "protocolVersion": "2024-11-05",
+                "serverInfo": {
+                    "name": "roblox-mcp-bridge",
+                    "version": "0.5",
+                },
+                "capabilities": {"tools": {}},
+            }
+            self._send({"jsonrpc": "2.0", "id": msg_id, "result": result})
+            return
+
+        if method == "notifications/initialized":
+            return
+
+        if method == "tools/list":
+            tools = _build_tools()
+            self._send({"jsonrpc": "2.0", "id": msg_id, "result": {"tools": tools}})
+            return
+
+        if method == "tools/call":
+            params = msg.get("params") or {}
+            name = params.get("name")
+            arguments = params.get("arguments") or {}
+            result = self._call_tool(name, arguments)
+            self._send({"jsonrpc": "2.0", "id": msg_id, "result": result})
+            return
+
+        if msg_id is not None:
+            self._send(
+                {
+                    "jsonrpc": "2.0",
+                    "id": msg_id,
+                    "error": {"code": -32601, "message": "Method not found"},
+                }
+            )
+
+    def _call_tool(self, name, arguments):
+        if name == "studio.get_connection_status":
+            return _tool_result(_get_connection_status(self.job_queue, arguments))
+
+        client_id = arguments.get("client_id") or DEFAULT_CLIENT_ID
+        if not self.job_queue.is_connected(client_id):
+            return _tool_error(
+                "Studio is not connected. Make sure the Roblox Studio plugin "
+                "is installed and 'Start Bridge Polling' has been clicked."
+            )
+
+        job = _build_job(name, arguments)
+        if job is None:
+            return _tool_error(f"Unknown tool: {name}")
+
+        job_id = job["job_id"]
+        self.job_queue.enqueue(client_id, job)
+        result = self.job_queue.wait_for_result(job_id, self.job_timeout_sec)
+
+        if result is None:
+            self.job_queue.cancel_job(job_id)
+            return _tool_error(
+                "Timed out waiting for Studio to respond. "
+                "Check that the plugin is running and connected."
+            )
+
+        if not result.get("ok", False):
+            return _tool_error(result.get("error") or "Studio error")
+
+        return _tool_result(result.get("result"))
+
+
+def _tool_result(payload):
+    text = json.dumps(payload, ensure_ascii=False, indent=2)
+    return {"content": [{"type": "text", "text": text}]}
+
+
+def _tool_error(message):
+    return {"isError": True, "content": [{"type": "text", "text": message}]}
+
+
+def _build_job(name, arguments):
+    job_id = f"job_{uuid.uuid4().hex[:12]}"
+    tool_to_job = {
+        # Instance tools
+        "roblox.list_services": "list_services",
+        "roblox.get_children": "get_children",
+        "roblox.get_descendants": "get_descendants",
+        "roblox.get_instance": "get_instance",
+        "roblox.find_instances": "find_instances",
+        "roblox.create_instance": "create_instance",
+        "roblox.delete_instance": "delete_instance",
+        "roblox.clone_instance": "clone_instance",
+        "roblox.reparent_instance": "reparent_instance",
+        "roblox.set_name": "set_name",
+        "roblox.select_instance": "select_instance",
+        "roblox.get_tree": "get_tree",
+        # Property / Attribute tools
+        "roblox.get_attributes": "get_attributes",
+        "roblox.set_attributes": "set_attributes",
+        "roblox.get_properties": "get_properties",
+        "roblox.set_properties": "set_properties",
+        # Tag tools
+        "roblox.get_tags": "get_tags",
+        "roblox.add_tag": "add_tag",
+        "roblox.remove_tag": "remove_tag",
+        # Script tools
+        "roblox.read_script": "read_script",
+        "roblox.write_script": "write_script",
+        "roblox.patch_script": "patch_script",
+        "roblox.get_script_lines": "get_script_lines",
+        "roblox.search_script": "search_script",
+        "roblox.get_script_functions": "get_script_functions",
+        "roblox.search_across_scripts": "search_across_scripts",
+        # Selection
+        "roblox.get_selection": "get_selection",
+        # ScriptEditorService
+        "roblox.open_script": "open_script",
+        "roblox.get_open_scripts": "get_open_scripts",
+        "roblox.close_script": "close_script",
+        # ChangeHistoryService
+        "roblox.undo": "undo",
+        "roblox.redo": "redo",
+        "roblox.set_waypoint": "set_waypoint",
+        "roblox.get_all_properties": "get_all_properties",
+        "roblox.run_code": "run_code",
+        "roblox.insert_model": "insert_model",
+        "roblox.get_console_output": "get_console_output",
+        "roblox.start_stop_play": "start_stop_play",
+        "roblox.run_script_in_play_mode": "run_script_in_play_mode",
+        "roblox.get_studio_mode": "get_studio_mode",
+    }
+
+    if name not in tool_to_job:
+        return None
+
+    job_type = tool_to_job[name]
+    job_args = dict(arguments)
+    if job_type in {"run_code", "run_script_in_play_mode"}:
+        if not job_args.get("code"):
+            job_args["code"] = job_args.get("script") or job_args.get("source")
+    return {
+        "job_id": job_id,
+        "type": job_type,
+        "args": job_args,
+        "created_at": time.time(),
+    }
+
+
+def _get_connection_status(job_queue, arguments):
+    client_id = arguments.get("client_id") or DEFAULT_CLIENT_ID
+    last_seen = job_queue.get_last_seen(client_id)
+    if last_seen is None:
+        return {"connected": False, "client_id": client_id}
+    age = time.time() - last_seen
+    return {
+        "connected": age < 15,
+        "client_id": client_id,
+        "last_seen_seconds": round(age, 1),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Shared schema fragments
+# ---------------------------------------------------------------------------
+
+_INSTANCE_REF_PROPS = {
+    "path": {
+        "type": "string",
+        "description": "Dot-separated path, e.g. 'Workspace.Baseplate'.",
+    },
+    "pathArray": {
+        "type": "array",
+        "items": {"type": "string"},
+        "description": "Path as array of names, e.g. ['Workspace','Baseplate'].",
+    },
+    "id": {
+        "type": "string",
+        "description": "Debug id returned by a previous call.",
+    },
+    "client_id": {"type": "string"},
+}
+
+
+def _ref_schema(extra_props=None, required=None):
+    props = dict(_INSTANCE_REF_PROPS)
+    if extra_props:
+        props.update(extra_props)
+    schema = {"type": "object", "properties": props}
+    if required:
+        schema["required"] = required
+    return schema
+
+
+def _build_tools():
+    return [
+        # -- Meta ---------------------------------------------------------------
+        {
+            "name": "studio.get_connection_status",
+            "description": "Check if the Roblox Studio plugin is connected to the bridge.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {"client_id": {"type": "string"}},
+            },
+        },
+        # -- Instance tools -----------------------------------------------------
+        {
+            "name": "roblox.list_services",
+            "description": "List top-level services in the current place.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {"client_id": {"type": "string"}},
+            },
+        },
+        {
+            "name": "roblox.get_children",
+            "description": "Get the direct children of an instance.",
+            "inputSchema": _ref_schema(),
+        },
+        {
+            "name": "roblox.get_descendants",
+            "description": "Get all descendants of an instance. Can be large - prefer get_tree for an overview.",
+            "inputSchema": _ref_schema(),
+        },
+        {
+            "name": "roblox.get_instance",
+            "description": "Get info (name, className, fullName) for a single instance.",
+            "inputSchema": _ref_schema(),
+        },
+        {
+            "name": "roblox.find_instances",
+            "description": "Find instances matching name, className, and/or tag under an ancestor.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "Exact Name match."},
+                    "className": {"type": "string", "description": "Exact ClassName match."},
+                    "tag": {"type": "string", "description": "Must have this CollectionService tag."},
+                    "ancestorPath": {"type": "string"},
+                    "ancestorPathArray": {"type": "array", "items": {"type": "string"}},
+                    "client_id": {"type": "string"},
+                },
+            },
+        },
+        {
+            "name": "roblox.get_tree",
+            "description": (
+                "Get a compact recursive tree of an instance hierarchy. "
+                "Returns name, className, and for scripts the line count. "
+                "Use maxDepth to limit depth (default 5) and maxChildren to cap children per node (default 50)."
+            ),
+            "inputSchema": _ref_schema(
+                extra_props={
+                    "maxDepth": {"type": "integer", "description": "Max tree depth (default 5)."},
+                    "maxChildren": {"type": "integer", "description": "Max children per node (default 50)."},
+                }
+            ),
+        },
+        {
+            "name": "roblox.create_instance",
+            "description": (
+                "Create a new instance. Set properties (including Name, Source for scripts) "
+                "via the properties dict. Supports rich types via _type objects."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "className": {"type": "string"},
+                    "parentPath": {"type": "string"},
+                    "parentPathArray": {"type": "array", "items": {"type": "string"}},
+                    "properties": {"type": "object", "description": "Key/value map of properties to set. Use _type objects for rich types."},
+                    "client_id": {"type": "string"},
+                },
+                "required": ["className"],
+            },
+        },
+        {
+            "name": "roblox.delete_instance",
+            "description": "Destroy an instance and all its descendants. Undoable via Ctrl+Z.",
+            "inputSchema": _ref_schema(),
+        },
+        {
+            "name": "roblox.clone_instance",
+            "description": "Clone an instance (and its descendants). Optionally place under a new parent and rename. Undoable.",
+            "inputSchema": _ref_schema(
+                extra_props={
+                    "newParentPath": {"type": "string"},
+                    "newParentPathArray": {"type": "array", "items": {"type": "string"}},
+                    "newName": {"type": "string", "description": "Rename the clone."},
+                }
+            ),
+        },
+        {
+            "name": "roblox.reparent_instance",
+            "description": "Move an instance to a new parent. Undoable.",
+            "inputSchema": _ref_schema(
+                extra_props={
+                    "newParentPath": {"type": "string"},
+                    "newParentPathArray": {"type": "array", "items": {"type": "string"}},
+                },
+                required=["newParentPath"],
+            ),
+        },
+        {
+            "name": "roblox.set_name",
+            "description": "Rename an instance. Undoable.",
+            "inputSchema": _ref_schema(
+                extra_props={"name": {"type": "string"}},
+                required=["name"],
+            ),
+        },
+        {
+            "name": "roblox.select_instance",
+            "description": "Select an instance in the Studio Explorer (for visibility).",
+            "inputSchema": _ref_schema(),
+        },
+        # -- Selection ----------------------------------------------------------
+        {
+            "name": "roblox.get_selection",
+            "description": "Get the instances currently selected in the Studio Explorer.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {"client_id": {"type": "string"}},
+            },
+        },
+        # -- Property / Attribute tools -----------------------------------------
+        {
+            "name": "roblox.get_properties",
+            "description": (
+                "Read specific properties from an instance. Returns rich type objects with _type field "
+                "for complex types (Color3, Vector3, CFrame, UDim2, BrickColor, EnumItem, etc.)."
+            ),
+            "inputSchema": _ref_schema(
+                extra_props={
+                    "properties": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Property names to read.",
+                    }
+                },
+                required=["properties"],
+            ),
+        },
+        {
+            "name": "roblox.set_properties",
+            "description": (
+                "Set properties on an instance. Undoable. For complex types, use _type objects: "
+                '{"_type":"Color3","r":255,"g":0,"b":0}, '
+                '{"_type":"Vector3","x":1,"y":2,"z":3}, '
+                '{"_type":"CFrame","components":[x,y,z,r00,r01,r02,r10,r11,r12,r20,r21,r22]}, '
+                '{"_type":"UDim2","xScale":0,"xOffset":100,"yScale":0,"yOffset":50}, '
+                '{"_type":"BrickColor","name":"Really red"}, '
+                '{"_type":"EnumItem","enumType":"Material","name":"Neon"}, '
+                '{"_type":"NumberRange","min":0,"max":10}, '
+                "etc. Simple types (string, number, boolean) are passed directly."
+            ),
+            "inputSchema": _ref_schema(
+                extra_props={
+                    "properties": {
+                        "type": "object",
+                        "description": "Key/value map of properties to set. Use _type objects for rich types.",
+                    }
+                },
+                required=["properties"],
+            ),
+        },
+        {
+            "name": "roblox.get_attributes",
+            "description": "Get all custom attributes on an instance. Returns rich type objects for complex attribute values.",
+            "inputSchema": _ref_schema(),
+        },
+        {
+            "name": "roblox.set_attributes",
+            "description": "Set custom attributes on an instance. Undoable. Supports rich type objects.",
+            "inputSchema": _ref_schema(
+                extra_props={"attributes": {"type": "object"}},
+                required=["attributes"],
+            ),
+        },
+        # -- Tag tools ----------------------------------------------------------
+        {
+            "name": "roblox.get_tags",
+            "description": "Get all CollectionService tags on an instance.",
+            "inputSchema": _ref_schema(),
+        },
+        {
+            "name": "roblox.add_tag",
+            "description": "Add a CollectionService tag to an instance. Undoable.",
+            "inputSchema": _ref_schema(
+                extra_props={"tag": {"type": "string"}},
+                required=["tag"],
+            ),
+        },
+        {
+            "name": "roblox.remove_tag",
+            "description": "Remove a CollectionService tag from an instance. Undoable.",
+            "inputSchema": _ref_schema(
+                extra_props={"tag": {"type": "string"}},
+                required=["tag"],
+            ),
+        },
+        # -- Script tools -------------------------------------------------------
+        {
+            "name": "roblox.read_script",
+            "description": (
+                "Read the full Source of a Script/LocalScript/ModuleScript. "
+                "For large scripts prefer get_script_lines to read a specific range."
+            ),
+            "inputSchema": _ref_schema(),
+        },
+        {
+            "name": "roblox.write_script",
+            "description": (
+                "Overwrite the full Source of a script. Undoable. "
+                "Automatically updates ScriptEditorService if the script is open. "
+                "Basic syntax validation is performed before applying changes. "
+                "WARNING: For partial edits use patch_script instead to avoid accidentally "
+                "replacing or corrupting unrelated code."
+            ),
+            "inputSchema": _ref_schema(
+                extra_props={"source": {"type": "string"}},
+                required=["source"],
+            ),
+        },
+        {
+            "name": "roblox.patch_script",
+            "description": (
+                "Apply line-based patches to a script without rewriting the entire source. Undoable. "
+                "Automatically updates ScriptEditorService if the script is open. "
+                "Provide an array of patch operations applied sequentially. "
+                "Each patch: {op, lineStart, lineEnd, content, expectedContent, expectedContext}. "
+                "Ops: 'insert' (before lineStart, REQUIRES expectedContext), 'replace' (lineStart..lineEnd inclusive), "
+                "'delete' (lineStart..lineEnd inclusive), 'append' (end), 'prepend' (beginning). "
+                "Line numbers are 1-indexed, refer to state after previous patches. "
+                "SAFETY: For 'insert', ALWAYS provide 'expectedContext' (the line before insertion point) to prevent unsafe mid-function insertions. "
+                "For 'replace' and 'delete', ALWAYS provide 'expectedContent'. "
+                "Indentation is automatically preserved. Basic syntax validation is performed before applying patches."
+            ),
+            "inputSchema": _ref_schema(
+                extra_props={
+                    "patches": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "op": {
+                                    "type": "string",
+                                    "enum": ["insert", "replace", "delete", "append", "prepend"],
+                                },
+                                "lineStart": {"type": "integer"},
+                                "lineEnd": {"type": "integer"},
+                                "content": {"type": "string"},
+                                "expectedContent": {"type": "string"},
+                                "expectedContext": {"type": "string"},
+                            },
+                            "required": ["op"],
+                        },
+                    }
+                },
+                required=["patches"],
+            ),
+        },
+        {
+            "name": "roblox.get_script_lines",
+            "description": (
+                "Read a specific line range from a script. "
+                "Omit startLine/endLine to get line count only (no content)."
+            ),
+            "inputSchema": _ref_schema(
+                extra_props={
+                    "startLine": {"type": "integer"},
+                    "endLine": {"type": "integer"},
+                }
+            ),
+        },
+        {
+            "name": "roblox.search_script",
+            "description": "Search a script's source for a string or Lua pattern.",
+            "inputSchema": _ref_schema(
+                extra_props={
+                    "query": {"type": "string"},
+                    "usePattern": {"type": "boolean"},
+                    "caseSensitive": {"type": "boolean"},
+                    "contextLines": {"type": "integer"},
+                    "maxResults": {"type": "integer"},
+                },
+                required=["query"],
+            ),
+        },
+        {
+            "name": "roblox.get_script_functions",
+            "description": "List all function definitions in a script with line numbers and types.",
+            "inputSchema": _ref_schema(),
+        },
+        {
+            "name": "roblox.search_across_scripts",
+            "description": "Search ALL scripts under an ancestor for a query string.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string"},
+                    "ancestorPath": {"type": "string"},
+                    "ancestorPathArray": {"type": "array", "items": {"type": "string"}},
+                    "usePattern": {"type": "boolean"},
+                    "caseSensitive": {"type": "boolean"},
+                    "maxScripts": {"type": "integer"},
+                    "maxMatchesPerScript": {"type": "integer"},
+                    "client_id": {"type": "string"},
+                },
+                "required": ["query"],
+            },
+        },
+        # -- Studio helpers ------------------------------------------------------
+        {
+            "name": "roblox.run_code",
+            "description": "Execute arbitrary Lua code within Studio and return a serialized result.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "code": {"type": "string", "description": "Lua source executed inside Studio."},
+                    "client_id": {"type": "string"},
+                },
+                "required": ["code"],
+            },
+        },
+        {
+            "name": "roblox.insert_model",
+            "description": "Insert a Marketplace asset into Workspace using InsertService.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "assetId": {"type": "string", "description": "Roblox asset ID to insert."},
+                    "client_id": {"type": "string"},
+                },
+                "required": ["assetId"],
+            },
+        },
+        {
+            "name": "roblox.get_console_output",
+            "description": "Read the buffered Studio Output log captured by the plugin.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "since": {
+                        "type": "number",
+                        "description": "Only return log entries whose timestamp is >= this Unix time.",
+                    },
+                    "maxEntries": {
+                        "type": "integer",
+                        "description": "Limit the number of log lines returned (default 400).",
+                    },
+                    "client_id": {"type": "string"},
+                },
+            },
+        },
+        {
+            "name": "roblox.start_stop_play",
+            "description": "Switch Studio between Edit, Play, Run, or Test modes.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "mode": {"type": "string", "description": "Target run mode (e.g. Play)."},
+                    "action": {"type": "string", "description": "Alias for mode (Start, Stop, Run)."},
+                    "client_id": {"type": "string"},
+                },
+                "required": ["mode"],
+            },
+        },
+        {
+            "name": "roblox.get_studio_mode",
+            "description": "Query the current Studio run mode (Play/Run/Edit) and whether play mode is active.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {"client_id": {"type": "string"}},
+            },
+        },
+        {
+            "name": "roblox.run_script_in_play_mode",
+            "description": "Run a Lua snippet while Studio is in Play or Run mode.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "code": {"type": "string", "description": "Lua source executed while running."},
+                    "client_id": {"type": "string"},
+                },
+                "required": ["code"],
+            },
+        },
+        # -- ScriptEditorService ------------------------------------------------
+        {
+            "name": "roblox.open_script",
+            "description": (
+                "Open a script in the Studio script editor tab and optionally navigate to a line. "
+                "Uses ScriptEditorService:OpenScriptDocumentAsync."
+            ),
+            "inputSchema": _ref_schema(
+                extra_props={
+                    "line": {"type": "integer", "description": "Line number to navigate to (default 1)."},
+                }
+            ),
+        },
+        {
+            "name": "roblox.get_open_scripts",
+            "description": "List all scripts currently open in the Studio script editor.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {"client_id": {"type": "string"}},
+            },
+        },
+        {
+            "name": "roblox.close_script",
+            "description": "Close a script's tab in the Studio script editor.",
+            "inputSchema": _ref_schema(),
+        },
+        # -- ChangeHistoryService -----------------------------------------------
+        {
+            "name": "roblox.undo",
+            "description": "Undo the last action in Studio. Equivalent to Ctrl+Z.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {"client_id": {"type": "string"}},
+            },
+        },
+        {
+            "name": "roblox.redo",
+            "description": "Redo the last undone action in Studio. Equivalent to Ctrl+Y.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {"client_id": {"type": "string"}},
+            },
+        },
+        {
+            "name": "roblox.set_waypoint",
+            "description": (
+                "Set a named undo/redo waypoint. "
+                "All MCP mutations already create automatic waypoints, but you can add explicit ones "
+                "to group a series of changes under a single undo step."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "Waypoint name (shown in undo history)."},
+                    "client_id": {"type": "string"},
+                },
+            },
+        },
+        {
+           "name": "roblox.get_all_properties",
+           "description": (
+            "Read ALL properties from an instance using ReflectionService. "
+            "Returns every readable, non-deprecated property with its current value "
+            "as rich type objects. Use this when you need a complete snapshot of an "
+            "instance, such as when saving UI templates. This always reflects the "
+            "latest engine properties, including newly added ones. "
+            "For reading specific known properties, prefer get_properties instead."
+        ),
+    "inputSchema": _ref_schema(),
+       },
+    ]
+
+def main():
+    parser = argparse.ArgumentParser(description="Roblox Studio MCP bridge")
+    parser.add_argument("--http-bind", default=DEFAULT_HTTP_BIND)
+    parser.add_argument("--http-port", type=int, default=DEFAULT_HTTP_PORT)
+    parser.add_argument("--poll-timeout", type=int, default=DEFAULT_POLL_TIMEOUT_SEC)
+    parser.add_argument("--job-timeout", type=int, default=DEFAULT_JOB_TIMEOUT_SEC)
+    parser.add_argument("--quiet", action="store_true")
+    args = parser.parse_args()
+
+    job_queue = JobQueue()
+
+    bind_display = args.http_bind or "0.0.0.0"
+    print(
+        f"[MCP Bridge] HTTP server listening on {bind_display}:{args.http_port}",
+        file=sys.stderr,
+    )
+    print(
+        f"[MCP Bridge] Poll timeout: {args.poll_timeout}s, Job timeout: {args.job_timeout}s",
+        file=sys.stderr,
+    )
+
+    http_server = RobloxBridgeHttpServer(
+        (args.http_bind, args.http_port),
+        RobloxBridgeHttpHandler,
+        job_queue,
+        args.poll_timeout,
+        args.quiet,
+    )
+
+    thread = threading.Thread(target=http_server.serve_forever, daemon=True)
+    thread.start()
+
+    mcp = McpServer(job_queue, args.job_timeout)
+    try:
+        mcp.run()
+    except KeyboardInterrupt:
+        pass
+
+
+if __name__ == "__main__":
+    main()
