@@ -19,7 +19,7 @@ jobs:
 
       - name: Install Rojo
         run: |
-          ROJO_VERSION="7.4.4"
+          ROJO_VERSION="7.5.1"
           curl -L "https://github.com/rojo-rbx/rojo/releases/download/v${ROJO_VERSION}/rojo-${ROJO_VERSION}-linux-x86_64.zip" -o rojo.zip
           unzip rojo.zip
           chmod +x rojo
