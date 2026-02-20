@@ -1,0 +1,42 @@
+name: Build Plugin
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  release:
+    types: [created]
+
+jobs:
+  build:
+    name: Build .rbxm
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rojo
+        uses: nicegui/setup-rojo@v1
+        with:
+          # Pin to a specific Rojo version for reproducible builds.
+          # Check https://github.com/rojo-rbx/rojo/releases for the latest.
+          version: "7.4.4"
+
+      - name: Build plugin
+        run: rojo build default.project.json --output RobloxMcpBridge.rbxm
+
+      - name: Upload artifact (every push)
+        uses: actions/upload-artifact@v4
+        with:
+          name: RobloxMcpBridge
+          path: RobloxMcpBridge.rbxm
+          retention-days: 30
+
+      # Only attach to GitHub Releases
+      - name: Upload to release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: RobloxMcpBridge.rbxm
