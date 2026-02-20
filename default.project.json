@@ -1,7 +1,6 @@
 {
   "name": "RobloxMcpBridge",
   "tree": {
-    "$className": "Plugin",
     "$path": "src/plugin"
   }
 }
