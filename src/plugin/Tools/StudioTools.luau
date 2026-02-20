@@ -1,37 +1,39 @@
 -- Tools/StudioTools.luau
 -- Tools for play mode control, code execution, model insertion, and console output
 
-local HttpService        = game:GetService("HttpService")
-local InsertService      = game:GetService("InsertService")
-local LogService         = game:GetService("LogService")
+local HttpService         = game:GetService("HttpService")
+local InsertService       = game:GetService("InsertService")
+local LogService          = game:GetService("LogService")
 local ServerScriptService = game:GetService("ServerScriptService")
-local StudioTestService  = game:GetService("StudioTestService")
+local StudioTestService   = game:GetService("StudioTestService")
+
+local History     = require(script.Parent.Parent.Utils.History)
+local PluginUtils = require(script.Parent.Parent.Utils.PluginUtils)
 
 ---------------------------------------------------------------------------
--- Insert model helpers (mirrors official Roblox MCP plugin approach)
+-- Settings keys
 ---------------------------------------------------------------------------
-local INSERT_MAX_SEARCH_DEPTH = 2048
+local MCP_STOP_PLAY_MESSAGE_KEY = "MCP_STOP_PLAY_MESSAGE"
+
+---------------------------------------------------------------------------
+-- Insert model helpers
+---------------------------------------------------------------------------
+local INSERT_MAX_SEARCH_DEPTH  = 2048
 local INSERT_MAX_DISTANCE_AWAY = 20
 
 local function getInsertPosition()
-	local camera = workspace.CurrentCamera
-	local vp = camera.ViewportSize / 2
+	local camera  = workspace.CurrentCamera
+	local vp      = camera.ViewportSize / 2
 	local unitRay = camera:ViewportPointToRay(vp.X, vp.Y, 0)
-	local params = RaycastParams.new()
+	local params  = RaycastParams.new()
 	params.BruteForceAllSlow = true
 	local result = workspace:Raycast(unitRay.Origin, unitRay.Direction * INSERT_MAX_SEARCH_DEPTH, params)
-	if result then
-		return result.Position
-	else
-		return camera.CFrame.Position + unitRay.Direction * INSERT_MAX_DISTANCE_AWAY
-	end
+	return result and result.Position
+		or camera.CFrame.Position + unitRay.Direction * INSERT_MAX_DISTANCE_AWAY
 end
 
 local function toTitleCase(str)
-	local result = str:gsub("(%a)([%w_']*)", function(first, rest)
-		return first:upper() .. rest:lower()
-	end)
-	return result:gsub("%s+", "")
+	return (str:gsub("(%a)([%w_']*)", function(f, r) return f:upper() .. r:lower() end):gsub("%s+", ""))
 end
 
 local function collapseIntoContainer(objects)
@@ -54,14 +56,11 @@ local function collapseIntoContainer(objects)
 end
 
 local function loadAssetById(assetId)
-	local objects = game:GetObjects("rbxassetid://" .. tostring(assetId))
-	return collapseIntoContainer(objects)
+	return collapseIntoContainer(game:GetObjects("rbxassetid://" .. tostring(assetId)))
 end
 
 local function searchFreeModels(query)
-	local ok, results = pcall(function()
-		return InsertService:GetFreeModels(query, 0)
-	end)
+	local ok, results = pcall(function() return InsertService:GetFreeModels(query, 0) end)
 	if not ok or not results or not results[1] then return {} end
 	local ids = {}
 	for i, item in ipairs(results[1].Results or {}) do
@@ -77,10 +76,6 @@ local function uniqueWorkspaceName(base)
 	while workspace:FindFirstChild(base .. i) do i += 1 end
 	return base .. i
 end
-
-local History = require(script.Parent.Parent.Utils.History)
-
-local StudioTools = {}
 
 ---------------------------------------------------------------------------
 -- Console log buffer
@@ -106,21 +101,12 @@ local function currentRunMode() return STUDIO_MODE end
 local function isStudioPlayMode(mode) return (mode or currentRunMode()) == "start_play" end
 
 ---------------------------------------------------------------------------
--- run_code helpers  (mirrors official MCP plugin approach)
+-- run_code – loadstring + getfenv output capture
 ---------------------------------------------------------------------------
-
-local MESSAGE_TYPE_MAP = {
-	[Enum.MessageType.MessageOutput]  = "[OUTPUT]",
-	[Enum.MessageType.MessageInfo]    = "[OUTPUT]",
-	[Enum.MessageType.MessageWarning] = "[WARNING]",
-	[Enum.MessageType.MessageError]   = "[ERROR]",
-}
-
 local function getTableType(arg)
 	local hasArray, hasTable = false, false
 	for key in arg do
-		if typeof(key) == "number" then hasArray = true
-		else hasTable = true end
+		if typeof(key) == "number" then hasArray = true else hasTable = true end
 		if hasArray and hasTable then break end
 	end
 	return hasArray, hasTable
@@ -131,8 +117,8 @@ local function serializeArg(arg): any
 		local _, isTable = getTableType(arg)
 		local out = {}
 		for k, v in arg do
-			local newKey = serializeArg(k)
-			out[if isTable then tostring(newKey) else newKey] = serializeArg(v)
+			local nk = serializeArg(k)
+			out[if isTable then tostring(nk) else nk] = serializeArg(v)
 		end
 		return out
 	elseif type(arg) == "userdata" then
@@ -144,42 +130,40 @@ end
 local function deepClone(t, cache)
 	local clone = {}
 	for key, value in t do
-		local newKey = key
+		local nk = key
 		if typeof(key) == "table" then
 			if not cache[key] then cache[key] = deepClone(key, cache) end
-			newKey = cache[key]
+			nk = cache[key]
 		end
-		local newValue = value
+		local nv = value
 		if typeof(value) == "table" then
 			if not cache[value] then cache[value] = deepClone(value, cache) end
-			newValue = cache[value]
+			nv = cache[value]
 		end
-		clone[newKey] = newValue
+		clone[nk] = nv
 	end
 	return clone
 end
 
 local function toStrTable(t: { any }): { string }
 	local cloned = deepClone(t, {})
-	local out = table.create(#cloned)
+	local out    = table.create(#cloned)
 	for i, arg in cloned do
 		local s = serializeArg(arg)
-		out[i] = if typeof(s) == "table" then HttpService:JSONEncode(s) else s
+		out[i]  = if typeof(s) == "table" then HttpService:JSONEncode(s) else tostring(s)
 	end
 	return out
 end
 
 local function addToOutput(output: string, header: string, ...): string
-	local parts = toStrTable(table.pack(...))
-	return output .. header .. " " .. table.concat(parts, "\t") .. "\n"
+	return output .. header .. " " .. table.concat(toStrTable(table.pack(...)), "\t") .. "\n"
 end
 
 local function runCodeWithOutput(command: string): string
 	local output = ""
-
 	local function executeCode()
 		local chunk = loadstring(command) :: any
-		local env = getfenv(chunk)
+		local env   = getfenv(chunk)
 
 		local oldPrint = env.print or print
 		env.print = function(...)
@@ -204,28 +188,43 @@ local function runCodeWithOutput(command: string): string
 			output = addToOutput(output, "[RETURNED RESULTS]", table.unpack(results, 1, results.n))
 		end
 	end
-
 	local ok, err = pcall(executeCode)
-	if not ok then
-		output = addToOutput(output, "[UNEXPECTED ERROR]", err)
-	end
+	if not ok then output = addToOutput(output, "[UNEXPECTED ERROR]", err) end
 	return output
 end
 
 ---------------------------------------------------------------------------
--- run_script_in_play_mode helpers  (mirrors official MCP plugin approach)
+-- run_script_in_play_mode – script injection + settings-key stop signal
 ---------------------------------------------------------------------------
-
 local TEST_SCRIPT_NAME = "AssistantTestScript"
 
 local function buildTestRunnerSource(userCode: string, timeout: number): string
 	local timeoutStr = tostring(timeout)
-	return [[
+	-- MCP_STOP_PLAY_SIGNAL_KEY is substituted as a literal string in the source
+	local stopKey = MCP_STOP_PLAY_MESSAGE_KEY
+	return string.format([[
 local StudioTestService = game:GetService("StudioTestService")
 local LogService        = game:GetService("LogService")
 local RunService        = game:GetService("RunService")
 if not RunService:IsRunning() then return end
 
+-- ── Stop-signal monitor ──────────────────────────────────────────────────
+-- The plugin (edit-mode) cannot call EndTest directly; it sets a settings
+-- key instead. This monitor loop runs inside the play session and calls
+-- EndTest when the signal is set.
+task.spawn(function()
+	while true do
+		local stop = plugin:GetSetting(%q)
+		if stop then
+			plugin:SetSetting(%q, false)
+			StudioTestService:EndTest({})
+			return
+		end
+		task.wait(0.5)
+	end
+end)
+
+-- ── Log capture ─────────────────────────────────────────────────────────
 local capturedLogs = {}
 local logConnection
 
@@ -269,17 +268,19 @@ local function endTest(ok, result)
 	})
 end
 
+-- ── Timeout watchdog ────────────────────────────────────────────────────
 task.spawn(function()
-	task.wait(]] .. timeoutStr .. [[)
+	task.wait(%s)
 	isTimeout = true
 	endTest(false, "timeout")
 end)
 
+-- ── User code ───────────────────────────────────────────────────────────
 local ok, result = pcall(function()
-]] .. userCode .. [[
+%s
 end)
 endTest(ok, result)
-]]
+]], stopKey, stopKey, timeoutStr, userCode)
 end
 
 local function removeTestScript()
@@ -289,16 +290,22 @@ end
 
 local function injectTestScript(code: string, timeout: number)
 	removeTestScript()
-	local src = buildTestRunnerSource(code, timeout)
-	local s = Instance.new("Script")
-	s.Name   = TEST_SCRIPT_NAME
-	s.Source = src
-	s.Parent = ServerScriptService
+	local s    = Instance.new("Script")
+	s.Name     = TEST_SCRIPT_NAME
+	s.Source   = buildTestRunnerSource(code, timeout)
+	s.Parent   = ServerScriptService
+end
+
+-- Signal the in-session monitor to call EndTest and stop the session.
+local function stopPlayViaSignal()
+	PluginUtils.setSettings(MCP_STOP_PLAY_MESSAGE_KEY, true)
 end
 
 ---------------------------------------------------------------------------
 -- Public tool functions
 ---------------------------------------------------------------------------
+
+local StudioTools = {}
 
 function StudioTools.run_code(args)
 	local code = args.code or args.script or args.source
@@ -314,6 +321,9 @@ function StudioTools.run_script_in_play_mode(args)
 	if type(timeout) ~= "number" or timeout < 0 then
 		return nil, "Timeout must be a positive number"
 	end
+
+	-- Clear any stale stop signal before starting
+	PluginUtils.setSettings(MCP_STOP_PLAY_MESSAGE_KEY, false)
 
 	injectTestScript(code, timeout)
 
@@ -362,9 +372,9 @@ function StudioTools.insert_model(args)
 		return nil, "Failed to load asset " .. tostring(assetId) .. ": " .. tostring(instance)
 	end
 
-	local baseName = query and toTitleCase(query) or ("Asset" .. tostring(assetId))
-	instance.Name   = uniqueWorkspaceName(baseName)
-	instance.Parent = workspace
+	local baseName   = query and toTitleCase(query) or ("Asset" .. tostring(assetId))
+	instance.Name    = uniqueWorkspaceName(baseName)
+	instance.Parent  = workspace
 
 	if instance:IsA("Model") then
 		pcall(function() instance:PivotTo(CFrame.new(getInsertPosition())) end)
@@ -373,8 +383,8 @@ function StudioTools.insert_model(args)
 	History.finishUndo(recording, true)
 
 	local Instances = require(script.Parent.Parent.Utils.Instances)
-	local info = Instances.serializeInstance(instance)
-	info.assetId = assetId
+	local info      = Instances.serializeInstance(instance)
+	info.assetId    = assetId
 	return info
 end
 
@@ -398,20 +408,27 @@ end
 
 function StudioTools.start_stop_play(args)
 	local requested = args.mode or args.action or args.state or args.command or args.name
-	if not requested then return nil, "Unknown Studio mode (supported: start_play, stop, run_server)" end
+	if not requested then
+		return nil, "Unknown Studio mode (supported: start_play, stop, run_server)"
+	end
 
 	if requested == "start_play" then
 		STUDIO_MODE = "start_play"
 		task.spawn(function() StudioTestService:ExecutePlayModeAsync({}) end)
 		return { mode = "start_play", message = "Started play" }
+
 	elseif requested == "run_server" then
 		STUDIO_MODE = "run_server"
 		task.spawn(function() StudioTestService:ExecuteRunModeAsync({}) end)
 		return { mode = "run_server", message = "Ran server" }
+
 	elseif requested == "stop" then
-		StudioTestService:EndTest({})
+		-- Use the signal approach so EndTest is called from inside the session
+		stopPlayViaSignal()
+		-- Fallback: if no session is running, attempt a direct call anyway
+		pcall(function() StudioTestService:EndTest({}) end)
 		STUDIO_MODE = "stop"
-		return { mode = "stop", message = "Stopped play" }
+		return { mode = "stop", message = "Stop signal sent" }
 	end
 
 	return nil, "Unknown Studio mode (supported: start_play, stop, run_server)"
