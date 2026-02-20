@@ -17,6 +17,14 @@ A Roblox Studio plugin that bridges Studio to an external MCP (Model Context Pro
 5. Start your MCP bridge server on `http://127.0.0.1:28650`.
 6. Click **Start Bridge Polling** in the plugin widget.
 
+## Installation wizard (.py)
+1. Download/clone this repo.
+2. Run install.py
+3. Open Roblox Studio. The **Roblox MCP** toolbar button will appear.
+4. Enable **HTTP Requests** in *Game Settings → Security* (the plugin will attempt this automatically).
+5. Start your MCP bridge server on `http://127.0.0.1:28650`.
+6. Click **Start Bridge Polling** in the plugin widget.
+
 ## Building locally (Rojo)
 
 ```bash
