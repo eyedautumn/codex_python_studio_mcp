@@ -177,11 +177,11 @@ A client is considered connected if it has polled within the last 15 seconds.
 
 ### Instance Navigation
 
-#### `roblox.list_services`
+#### `roblox_list_services`
 
 List top-level services in the place (children of `game`).
 
-#### `roblox.get_children`
+#### `roblox_get_children`
 
 Get the direct children of an instance.
 
@@ -189,7 +189,7 @@ Get the direct children of an instance.
 |---|---|---|
 | `path` / `pathArray` / `id` | string / string[] / string | Instance reference |
 
-#### `roblox.get_descendants`
+#### `roblox_get_descendants`
 
 Get all descendants of an instance. Can be very large — prefer `get_tree` for overviews.
 
@@ -197,7 +197,7 @@ Get all descendants of an instance. Can be very large — prefer `get_tree` for 
 |---|---|---|
 | `path` / `pathArray` / `id` | string / string[] / string | Instance reference |
 
-#### `roblox.get_instance`
+#### `roblox_get_instance`
 
 Get info for a single instance: `name`, `className`, `fullName`, `id`, `parentId`.
 
@@ -205,7 +205,7 @@ Get info for a single instance: `name`, `className`, `fullName`, `id`, `parentId
 |---|---|---|
 | `path` / `pathArray` / `id` | string / string[] / string | Instance reference |
 
-#### `roblox.find_instances`
+#### `roblox_find_instances`
 
 Search descendants of an ancestor by `name`, `className`, and/or CollectionService tag.
 
@@ -216,7 +216,7 @@ Search descendants of an ancestor by `name`, `className`, and/or CollectionServi
 | `tag` | string | Must have this tag |
 | `ancestorPath` / `ancestorPathArray` | string / string[] | Search root (default: `game`) |
 
-#### `roblox.get_tree`
+#### `roblox_get_tree`
 
 Get a compact recursive tree view. Efficient way to understand hierarchy without multiple calls.
 
@@ -236,7 +236,7 @@ Each node returns `{ name, className, children?, childCount?, scriptLineCount?, 
 
 ### Instance Manipulation
 
-#### `roblox.create_instance`
+#### `roblox_create_instance`
 
 Create a new instance under a parent. Supports rich type objects in the `properties` dict.
 
@@ -246,7 +246,7 @@ Create a new instance under a parent. Supports rich type objects in the `propert
 | `parentPath` / `parentPathArray` | string / string[] | | Parent (default: `Workspace`) |
 | `properties` | object | | Key/value map of properties to set (including `Name`, `Source`, etc.). Use `_type` objects for rich types. |
 
-#### `roblox.delete_instance`
+#### `roblox_delete_instance`
 
 Destroy an instance and all its descendants. Undoable via Ctrl+Z.
 
@@ -254,7 +254,7 @@ Destroy an instance and all its descendants. Undoable via Ctrl+Z.
 |---|---|---|
 | `path` / `pathArray` / `id` | string / string[] / string | Instance to destroy |
 
-#### `roblox.clone_instance`
+#### `roblox_clone_instance`
 
 Clone an instance (and its descendants). Optionally reparent and rename the clone. Undoable.
 
@@ -264,7 +264,7 @@ Clone an instance (and its descendants). Optionally reparent and rename the clon
 | `newParentPath` / `newParentPathArray` | string / string[] | Parent for the clone (default: same parent) |
 | `newName` | string | Rename the clone |
 
-#### `roblox.reparent_instance`
+#### `roblox_reparent_instance`
 
 Move an instance to a new parent. Undoable.
 
@@ -273,7 +273,7 @@ Move an instance to a new parent. Undoable.
 | `path` / `pathArray` / `id` | | | Instance to move |
 | `newParentPath` / `newParentPathArray` | string / string[] | ✓ | New parent |
 
-#### `roblox.set_name`
+#### `roblox_set_name`
 
 Rename an instance. Undoable.
 
@@ -282,7 +282,7 @@ Rename an instance. Undoable.
 | `path` / `pathArray` / `id` | | | Instance to rename |
 | `name` | string | ✓ | New name |
 
-#### `roblox.select_instance`
+#### `roblox_select_instance`
 
 Select an instance in the Studio Explorer panel for visibility.
 
@@ -294,7 +294,7 @@ Select an instance in the Studio Explorer panel for visibility.
 
 ### Selection
 
-#### `roblox.get_selection`
+#### `roblox_get_selection`
 
 Get the instances currently selected in the Studio Explorer. Returns an array of serialized instance info (`id`, `name`, `className`, `fullName`, `parentId`).
 
@@ -304,7 +304,7 @@ No required parameters (only optional `client_id`).
 
 ### Properties & Attributes
 
-#### `roblox.get_properties`
+#### `roblox_get_properties`
 
 Read specific built-in properties from an instance. Returns rich type objects with `_type` field for complex types.
 
@@ -321,7 +321,7 @@ Read specific built-in properties from an instance. Returns rich type objects wi
 }
 ```
 
-#### `roblox.get_all_properties`
+#### `roblox_get_all_properties`
 
 Read **all** properties from an instance using `ReflectionService`. Returns every readable, non-deprecated property with its current value as rich type objects. This always reflects the latest engine properties, including newly added ones.
 
@@ -346,7 +346,7 @@ Use this when you need a complete snapshot of an instance (e.g. saving UI templa
 }
 ```
 
-#### `roblox.set_properties`
+#### `roblox_set_properties`
 
 Set built-in properties on an instance. Undoable. Use `_type` objects for complex types (see [Rich Type System](#rich-type-system)).
 
@@ -355,13 +355,13 @@ Set built-in properties on an instance. Undoable. Use `_type` objects for comple
 | `path` / `pathArray` / `id` | | | Instance |
 | `properties` | object | ✓ | Key/value map of properties to set |
 
-#### `roblox.get_attributes`
+#### `roblox_get_attributes`
 
 Get all custom attributes on an instance. Returns rich type objects for complex attribute values.
 
 **Returns:** `{ "Health": 100, "Team": "Red", ... }`
 
-#### `roblox.set_attributes`
+#### `roblox_set_attributes`
 
 Set custom attributes on an instance. Undoable. Pass `null`/`nil` as a value to remove an attribute. Supports rich type objects.
 
@@ -374,13 +374,13 @@ Set custom attributes on an instance. Undoable. Pass `null`/`nil` as a value to 
 
 ### Tags (CollectionService)
 
-#### `roblox.get_tags`
+#### `roblox_get_tags`
 
 Get all CollectionService tags on an instance.
 
 **Returns:** `{ "tags": ["Enemy", "Damageable"] }`
 
-#### `roblox.add_tag`
+#### `roblox_add_tag`
 
 Add a tag to an instance. Undoable.
 
@@ -389,7 +389,7 @@ Add a tag to an instance. Undoable.
 | `path` / `pathArray` / `id` | | | Instance |
 | `tag` | string | ✓ | Tag to add |
 
-#### `roblox.remove_tag`
+#### `roblox_remove_tag`
 
 Remove a tag from an instance. Undoable.
 
@@ -402,7 +402,7 @@ Remove a tag from an instance. Undoable.
 
 ### Script Tools
 
-#### `roblox.read_script`
+#### `roblox_read_script`
 
 Read the full `Source` of a `Script`, `LocalScript`, or `ModuleScript`.
 
@@ -410,7 +410,7 @@ Use sparingly on large scripts — prefer `get_script_lines` or `search_script` 
 
 **Returns:** `{ "source": "local x = 1\n..." }`
 
-#### `roblox.write_script`
+#### `roblox_write_script`
 
 Overwrite the full `Source` of a script. Undoable. Automatically updates `ScriptEditorService` if the script is open. Basic syntax validation (bracket/parenthesis matching) is performed before applying changes.
 
@@ -421,7 +421,7 @@ Overwrite the full `Source` of a script. Undoable. Automatically updates `Script
 | `path` / `pathArray` / `id` | | | Script instance |
 | `source` | string | ✓ | Complete new source |
 
-#### `roblox.get_script_lines`
+#### `roblox_get_script_lines`
 
 Read a specific line range from a script. If `startLine` and `endLine` are omitted, returns only the total line count (no content) — useful as a first probe.
 
@@ -444,7 +444,7 @@ Read a specific line range from a script. If `startLine` and `endLine` are omitt
 }
 ```
 
-#### `roblox.search_script`
+#### `roblox_search_script`
 
 Search a script's source for a plain string or Lua pattern. Returns matching lines with line numbers and optional surrounding context.
 
@@ -469,7 +469,7 @@ Search a script's source for a plain string or Lua pattern. Returns matching lin
 }
 ```
 
-#### `roblox.get_script_functions`
+#### `roblox_get_script_functions`
 
 List all function definitions in a script with their line numbers and types. Use this to understand the structure of a script before editing.
 
@@ -500,7 +500,7 @@ Detects these patterns:
 }
 ```
 
-#### `roblox.search_across_scripts`
+#### `roblox_search_across_scripts`
 
 Search all scripts under an ancestor for a query string. Returns which scripts contain matches with line numbers. Useful for finding where a function, variable, or string is used across the codebase.
 
@@ -534,7 +534,7 @@ Search all scripts under an ancestor for a query string. Returns which scripts c
 }
 ```
 
-#### `roblox.patch_script`
+#### `roblox_patch_script`
 
 Apply line-based patches to a script without rewriting the entire source. Undoable. Automatically updates `ScriptEditorService` if the script is open. Patches are applied sequentially — line numbers in later patches refer to the script state after earlier patches.
 
@@ -610,7 +610,7 @@ local b = 100
 
 ### ScriptEditorService
 
-#### `roblox.open_script`
+#### `roblox_open_script`
 
 Open a script in the Studio script editor tab and optionally navigate to a specific line. Uses `ScriptEditorService:OpenScriptDocumentAsync`.
 
@@ -619,13 +619,13 @@ Open a script in the Studio script editor tab and optionally navigate to a speci
 | `path` / `pathArray` / `id` | | | Script instance |
 | `line` | integer | `1` | Line number to navigate to |
 
-#### `roblox.get_open_scripts`
+#### `roblox_get_open_scripts`
 
 List all scripts currently open in the Studio script editor.
 
 No required parameters (only optional `client_id`). Returns an array of script info objects with `id`, `name`, `className`, and `fullName`.
 
-#### `roblox.close_script`
+#### `roblox_close_script`
 
 Close a script's tab in the Studio script editor.
 
@@ -637,15 +637,15 @@ Close a script's tab in the Studio script editor.
 
 ### ChangeHistoryService
 
-#### `roblox.undo`
+#### `roblox_undo`
 
 Undo the last action in Studio. Equivalent to Ctrl+Z. No required parameters.
 
-#### `roblox.redo`
+#### `roblox_redo`
 
 Redo the last undone action in Studio. Equivalent to Ctrl+Y. No required parameters.
 
-#### `roblox.set_waypoint`
+#### `roblox_set_waypoint`
 
 Set a named undo/redo waypoint. All MCP mutations already create automatic waypoints, but you can add explicit ones to group a series of changes under a single undo step.
 
@@ -657,7 +657,7 @@ Set a named undo/redo waypoint. All MCP mutations already create automatic waypo
 
 ### Studio Helpers
 
-#### `roblox.run_code`
+#### `roblox_run_code`
 
 Execute arbitrary Lua code inside Studio and return a serialized result using the rich type format.
 
@@ -665,7 +665,7 @@ Execute arbitrary Lua code inside Studio and return a serialized result using th
 |---|---|---|---|
 | `code` | string | ✓ | Lua source executed inside Studio |
 
-#### `roblox.insert_model`
+#### `roblox_insert_model`
 
 Insert a Marketplace asset into `Workspace` via `InsertService:LoadAsset` and return the inserted model's serialized metadata.
 
@@ -673,7 +673,7 @@ Insert a Marketplace asset into `Workspace` via `InsertService:LoadAsset` and re
 |---|---|---|---|
 | `assetId` | string | ✓ | Roblox asset ID to insert |
 
-#### `roblox.get_console_output`
+#### `roblox_get_console_output`
 
 Fetch the buffered Output log. Pass `since` (Unix timestamp) and `maxEntries` to limit the slice. Entries include `text`, `type`, and `timestamp`.
 
@@ -682,7 +682,7 @@ Fetch the buffered Output log. Pass `since` (Unix timestamp) and `maxEntries` to
 | `since` | number | Only return entries with `timestamp >= this value` |
 | `maxEntries` | integer | Limit the number of entries returned (default 400) |
 
-#### `roblox.start_stop_play`
+#### `roblox_start_stop_play`
 
 Switch Studio's run mode. `"stop"` maps to Edit, `"start_play"` maps to Play, `"run_server"` maps to Run mode.
 
@@ -690,13 +690,13 @@ Switch Studio's run mode. `"stop"` maps to Edit, `"start_play"` maps to Play, `"
 |---|---|---|---|
 | `mode` | string | ✓ | `"start_play"`, `"run_server"`, or `"stop"` |
 
-#### `roblox.get_studio_mode`
+#### `roblox_get_studio_mode`
 
 Return the current Studio run mode and a boolean `isPlay` flag indicating whether a Play/Run session is active.
 
 **Returns:** `{ "mode": "stop", "isPlay": false }`
 
-#### `roblox.run_script_in_play_mode`
+#### `roblox_run_script_in_play_mode`
 
 Execute Lua while Studio is in Play or Run mode. Requires `code` and errors if Studio is stopped.
 
@@ -723,35 +723,35 @@ Execute Lua while Studio is in Play or Run mode. Requires `code` and errors if S
 ### Exploring a place
 
 ```
-roblox.list_services
-  → roblox.get_tree  path="Workspace"             maxDepth=3
-  → roblox.get_tree  path="ServerScriptService"   maxDepth=2
+roblox_list_services
+  → roblox_get_tree  path="Workspace"             maxDepth=3
+  → roblox_get_tree  path="ServerScriptService"   maxDepth=2
 ```
 
 ### Understanding a script's structure
 
 ```
-1. roblox.get_script_functions  path="ServerStorage.Modules.CashService"
+1. roblox_get_script_functions  path="ServerStorage.Modules.CashService"
    → see all functions with line numbers
-2. roblox.get_script_lines  startLine=42  endLine=80
+2. roblox_get_script_lines  startLine=42  endLine=80
    → read the function you care about
 ```
 
 ### Finding usage across the codebase
 
 ```
-1. roblox.search_across_scripts  query="ClaimCash"
+1. roblox_search_across_scripts  query="ClaimCash"
    → find all scripts that reference ClaimCash
-2. For each result, roblox.get_script_lines to read context
+2. For each result, roblox_get_script_lines to read context
 ```
 
 ### Safe script editing (required workflow)
 
 ```
-1. roblox.get_script_lines                                 → get total line count
-2. roblox.search_script  query="function onDamage"         → find line 142
-3. roblox.get_script_lines  startLine=140  endLine=160     → read exact content
-4. roblox.patch_script  patches=[{
+1. roblox_get_script_lines                                 → get total line count
+2. roblox_search_script  query="function onDamage"         → find line 142
+3. roblox_get_script_lines  startLine=140  endLine=160     → read exact content
+4. roblox_patch_script  patches=[{
      op: "replace",
      lineStart: 145,
      lineEnd: 150,
@@ -765,8 +765,8 @@ If step 4 fails with `CONTENT MISMATCH`: go back to step 3, re-read, and retry.
 ### Safe insert workflow
 
 ```
-1. roblox.get_script_lines  startLine=50  endLine=52    → read lines around insertion point
-2. roblox.patch_script  patches=[{
+1. roblox_get_script_lines  startLine=50  endLine=52    → read lines around insertion point
+2. roblox_patch_script  patches=[{
      op: "insert",
      lineStart: 51,
      expectedContext: "<exact content of line 50>",
@@ -777,18 +777,18 @@ If step 4 fails with `CONTENT MISMATCH`: go back to step 3, re-read, and retry.
 ### Creating a new scripted object
 
 ```
-1. roblox.create_instance  className="Part"  parentPath="Workspace"
+1. roblox_create_instance  className="Part"  parentPath="Workspace"
      properties={"Name":"Lava","BrickColor":{"_type":"BrickColor","name":"Really red"}}
-2. roblox.create_instance  className="Script"  parentPath="Workspace.Lava"
+2. roblox_create_instance  className="Script"  parentPath="Workspace.Lava"
      properties={"Name":"DamageScript","Source":"..."}
-3. roblox.add_tag  path="Workspace.Lava"  tag="Hazard"
+3. roblox_add_tag  path="Workspace.Lava"  tag="Hazard"
 ```
 
 ### Duplicating and modifying with rich types
 
 ```
-1. roblox.clone_instance  path="Workspace.Template"  newName="Copy1"
-2. roblox.set_properties  path="Workspace.Copy1"  properties={
+1. roblox_clone_instance  path="Workspace.Template"  newName="Copy1"
+2. roblox_set_properties  path="Workspace.Copy1"  properties={
      "Position": {"_type":"Vector3","x":10,"y":0,"z":0},
      "Color":    {"_type":"Color3","r":255,"g":128,"b":0},
      "Material": {"_type":"EnumItem","enumType":"Material","name":"Neon"}
@@ -798,7 +798,7 @@ If step 4 fails with `CONTENT MISMATCH`: go back to step 3, re-read, and retry.
 ### Working with the user's selection
 
 ```
-1. roblox.get_selection
+1. roblox_get_selection
    → see what the user has selected
 2. Operate on the returned instances by id
 ```
@@ -806,18 +806,18 @@ If step 4 fails with `CONTENT MISMATCH`: go back to step 3, re-read, and retry.
 ### Using the script editor
 
 ```
-1. roblox.open_script       path="ServerScriptService.MainScript"  line=42
-2. roblox.get_open_scripts  → see all currently open script tabs
-3. roblox.close_script      path="ServerScriptService.MainScript"
+1. roblox_open_script       path="ServerScriptService.MainScript"  line=42
+2. roblox_get_open_scripts  → see all currently open script tabs
+3. roblox_close_script      path="ServerScriptService.MainScript"
 ```
 
 ### Undo/Redo workflow
 
 ```
-1. roblox.set_waypoint  name="Before refactor"
+1. roblox_set_waypoint  name="Before refactor"
 2. ... make multiple changes ...
-3. roblox.undo   → reverts to the last waypoint
-4. roblox.redo   → re-applies the undone changes
+3. roblox_undo   → reverts to the last waypoint
+4. roblox_redo   → re-applies the undone changes
 ```
 
 ---
@@ -833,4 +833,4 @@ If step 4 fails with `CONTENT MISMATCH`: go back to step 3, re-read, and retry.
 | `"Could not enable HttpService"` | Studio security setting | Enable HTTP requests in Game Settings → Security |
 | Rich type not applying | Incorrect `_type` format or field names | Check the [Rich Type System](#rich-type-system) table for correct format |
 | Script editor tool fails | `ScriptEditorService` not available | Ensure you're using a recent version of Roblox Studio |
-| `Instance` property not resolving | `fullName` path is wrong or instance doesn't exist | Use `roblox.find_instances` to confirm the path, then retry |
+| `Instance` property not resolving | `fullName` path is wrong or instance doesn't exist | Use `roblox_find_instances` to confirm the path, then retry |
