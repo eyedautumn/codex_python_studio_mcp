@@ -1,20 +1,22 @@
 name: Build Plugin
 
 on:
-  push:
-    branches: [main, master]
-    tags:
-      - "v*.*.*"
   pull_request:
-    branches: [main, master]
+  push:
+    branches:
+      - main
+      - master
+
+env:
+  PLUGIN_VERSION: "0.1.${{ github.run_number }}"
+
+permissions:
+  contents: write
 
 jobs:
   build:
     name: Build .rbxm
     runs-on: ubuntu-latest
-
-    permissions:
-      contents: write
 
     steps:
       - name: Checkout repository
@@ -32,17 +34,31 @@ jobs:
       - name: Build plugin
         run: rojo build default.project.json --output RobloxMcpBridge.rbxm
 
-      - name: Upload artifact (every push)
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: RobloxMcpBridge
           path: RobloxMcpBridge.rbxm
           retention-days: 30
 
-      # Runs only when you push a tag like: git tag v1.0.0 && git push --tags
-      - name: Create GitHub Release
-        if: github.ref_type == 'tag'
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    if: github.ref_name == github.event.repository.default_branch
+    needs: [build]
+
+    steps:
+      - run: mkdir -p output
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: output
+          merge-multiple: true
+
+      - name: Create release
         uses: softprops/action-gh-release@v2
         with:
-          files: RobloxMcpBridge.rbxm
+          tag_name: v${{ env.PLUGIN_VERSION }}
+          name: Release v${{ env.PLUGIN_VERSION }}
           generate_release_notes: true
+          files: output/*
