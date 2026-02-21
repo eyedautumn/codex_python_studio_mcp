@@ -1,5 +1,6 @@
 # Roblox Studio MCP Bridge
 ![Build](https://github.com/eyedautumn/codex_python_studio_mcp/actions/workflows/build.yml/badge.svg)
+![Version](https://img.shields.io/github/v/release/eyedautumn/python_roblox_studio_mcp?style=flat-square&display_name=tag)
 
 A Roblox Studio plugin that bridges Studio to an external MCP (Model Context Protocol) server over HTTP, enabling AI tools to read and manipulate your game's hierarchy, scripts, properties, and more.
 
