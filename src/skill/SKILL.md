@@ -6,7 +6,7 @@ description: Bridge any MCP client to Roblox Studio via MCP tools and a local St
 # Roblox Studio MCP
 
 ## Overview
-Connect to a running Roblox Studio session through a local MCP server and a Studio plugin. The plugin polls a local HTTP bridge and exposes tools for reading and editing instances, scripts, attributes, properties, and tags. All mutations are tracked by ChangeHistoryService and can be undone with Ctrl+Z or the `roblox.undo` tool.
+Connect to a running Roblox Studio session through a local MCP server and a Studio plugin. The plugin polls a local HTTP bridge and exposes tools for reading and editing instances, scripts, attributes, properties, and tags. All mutations are tracked by ChangeHistoryService and can be undone with Ctrl+Z or the `roblox_undo` tool.
 
 ## Core Capabilities
 1. Connect and verify Studio status
@@ -21,8 +21,8 @@ Connect to a running Roblox Studio session through a local MCP server and a Stud
 10. Open, close, and list scripts in the Studio script editor (ScriptEditorService)
 11. Undo/redo changes and set named waypoints (ChangeHistoryService)
 12. Rich type support for properties: Color3, Vector3, Vector2, CFrame, UDim, UDim2, BrickColor, EnumItem, NumberRange, NumberSequence, ColorSequence, Rect, PhysicalProperties, Ray, Font, Axes, Faces
-13. Execute ad-hoc Lua with `roblox.run_code` or `roblox.run_script_in_play_mode` and get the serialized return value plus any Output log messages.
-14. Control Studio (insert assets, toggle run modes, stream console output) with `roblox.insert_model`, `roblox.start_stop_play`, `roblox.get_console_output`, and `roblox.get_studio_mode`.
+13. Execute ad-hoc Lua with `roblox_run_code` or `roblox_run_script_in_play_mode` and get the serialized return value plus any Output log messages.
+14. Control Studio (insert assets, toggle run modes, stream console output) with `roblox_insert_model`, `roblox_start_stop_play`, `roblox_get_console_output`, and `roblox_get_studio_mode`.
 
 ## Quick Start
 1. Start the MCP bridge server (stdio + HTTP bridge):
@@ -57,13 +57,13 @@ The bridge uses a **threaded HTTP server** so that long-poll requests from the p
 ## Usage Guidance
 
 ### Instance navigation
-- Use `roblox.get_tree` for an efficient overview of the hierarchy instead of chaining `get_children` calls. Tune `maxDepth` and `maxChildren` to control size.
-- Use `roblox.find_instances` to locate objects by name, className, or tag, then operate by returned `id`.
-- Use `roblox.get_selection` to see what the user has selected in the Explorer panel.
+- Use `roblox_get_tree` for an efficient overview of the hierarchy instead of chaining `get_children` calls. Tune `maxDepth` and `maxChildren` to control size.
+- Use `roblox_find_instances` to locate objects by name, className, or tag, then operate by returned `id`.
+- Use `roblox_get_selection` to see what the user has selected in the Explorer panel.
 - Prefer `pathArray` over `path` for reliable instance targeting.
 
 ### Rich type properties
-When reading properties with `roblox.get_properties`, complex types are returned as objects with a `_type` field:
+When reading properties with `roblox_get_properties`, complex types are returned as objects with a `_type` field:
 ```json
 {
   "Color": {"_type": "Color3", "r": 255, "g": 128, "b": 0},
@@ -71,7 +71,7 @@ When reading properties with `roblox.get_properties`, complex types are returned
   "Material": {"_type": "EnumItem", "enumType": "Material", "name": "Neon", "value": 288}
 }
 ```
-When setting properties with roblox.set_properties, pass the same format:
+When setting properties with roblox_set_properties, pass the same format:
 ```json
 {
   "properties": {
@@ -87,7 +87,7 @@ When setting properties with roblox.set_properties, pass the same format:
 Supported _type values: Color3, Vector3, Vector2, CFrame, UDim, UDim2, BrickColor, EnumItem, NumberRange, NumberSequence, ColorSequence, Rect, PhysicalProperties, Ray, Font, Axes, Faces. Simple types (string, number, boolean) are passed directly without _type.
 
 ### Script editing – safe workflow (IMPORTANT)
-##### NEVER use roblox.write_script on existing scripts with more than ~30 lines. Use roblox.patch_script instead.
+##### NEVER use roblox_write_script on existing scripts with more than ~30 lines. Use roblox_patch_script instead.
 ##### ALWAYS provide expectedContent on replace and delete patch ops. This prevents blind overwrites and catches stale line numbers.
 ##### ALWAYS provide expectedContext on insert patch ops. This is REQUIRED to prevent unsafe insertions inside functions.
 ##### ALWAYS read the lines you plan to edit (get_script_lines or search_script) immediately before patching. Do not rely on line numbers from earlier in the conversation.
@@ -100,7 +100,7 @@ If a patch fails with CONTENT MISMATCH or CONTEXT MISMATCH, re-read the affected
 - **Indentation preservation**: Automatically preserves proper indentation when inserting or replacing code
 - **Context validation**: Insert operations require `expectedContext` to ensure you're inserting at the correct location
 
-All script mutations are undoable via Ctrl+Z or roblox.undo.
+All script mutations are undoable via Ctrl+Z or roblox_undo.
 Scripts are automatically updated in ScriptEditorService if open - you don't need to close and reopen them.
 Safe editing workflow:
 search_script query="function onDamage" → find line 142
@@ -123,35 +123,35 @@ content: "<new code to insert>"
 }]
 
 ### Studio helpers
-- Run lightweight Lua with `roblox.run_code`. Watch the buffered Output log with `roblox.get_console_output` if you need to capture what `print` or `warn` emitted.
-- Drop a published asset directly into Workspace with `roblox.insert_model`, then inspect the serialized instance to continue working with it.
-- Switch Studio between Play/Run/Edit via `roblox.start_stop_play`, use `roblox.get_studio_mode` to confirm the current mode, and execute gameplay-only snippets through `roblox.run_script_in_play_mode` while run mode is active.
+- Run lightweight Lua with `roblox_run_code`. Watch the buffered Output log with `roblox_get_console_output` if you need to capture what `print` or `warn` emitted.
+- Drop a published asset directly into Workspace with `roblox_insert_model`, then inspect the serialized instance to continue working with it.
+- Switch Studio between Play/Run/Edit via `roblox_start_stop_play`, use `roblox_get_studio_mode` to confirm the current mode, and execute gameplay-only snippets through `roblox_run_script_in_play_mode` while run mode is active.
 
 Script editor management
-Use roblox.open_script to open a script in Studio's editor and jump to a specific line. Useful after finding something with search_script or search_across_scripts.
-Use roblox.get_open_scripts to see what tabs are open in the editor.
-Use roblox.close_script to close a script's editor tab.
+Use roblox_open_script to open a script in Studio's editor and jump to a specific line. Useful after finding something with search_script or search_across_scripts.
+Use roblox_get_open_scripts to see what tabs are open in the editor.
+Use roblox_close_script to close a script's editor tab.
 Undo/Redo
 All mutations automatically create ChangeHistoryService waypoints with descriptive names (e.g., "MCP: Create Part", "MCP: Patch script DamageHandler").
-Use roblox.undo / roblox.redo to programmatically undo/redo changes.
-Use roblox.set_waypoint to add an explicit named waypoint, e.g., before a batch of related changes you want to undo as a group.
+Use roblox_undo / roblox_redo to programmatically undo/redo changes.
+Use roblox_set_waypoint to add an explicit named waypoint, e.g., before a batch of related changes you want to undo as a group.
 The user can also undo all MCP changes manually with Ctrl+Z in Studio.
 Understanding code structure
-Use roblox.get_script_functions to list all function definitions with line numbers before editing.
-Use roblox.search_across_scripts to find where a function, variable, or string is used across the entire codebase.
+Use roblox_get_script_functions to list all function definitions with line numbers before editing.
+Use roblox_search_across_scripts to find where a function, variable, or string is used across the entire codebase.
 Properties, attributes, and tags
-Use roblox.get_properties / roblox.set_properties for built-in properties (now with rich type support).
-Use roblox.get_attributes / roblox.set_attributes for custom attributes.
-Use roblox.get_tags, roblox.add_tag, roblox.remove_tag for CollectionService tags.
+Use roblox_get_properties / roblox_set_properties for built-in properties (now with rich type support).
+Use roblox_get_attributes / roblox_set_attributes for custom attributes.
+Use roblox_get_tags, roblox_add_tag, roblox_remove_tag for CollectionService tags.
 Creating and duplicating
-Use roblox.create_instance to create new instances with properties set in one call (supports rich types).
-Use roblox.clone_instance to duplicate an existing instance (with optional reparent and rename).
+Use roblox_create_instance to create new instances with properties set in one call (supports rich types).
+Use roblox_clone_instance to duplicate an existing instance (with optional reparent and rename).
 
 ### Performance Best Practices & Preventing Lag
 
 #### Memory Management & Cleanup with Trove
 
-**ALWAYS use Trove for cleanup** - It's the industry standard for managing connections, threads, and instances in Roblox.
+**ALWAYS use Trove for cleanup** - It's the industry standard for managing connections, threads, and instances in roblox_
 
 **What is Trove?**
 Trove is a cleanup library that automatically disconnects connections, cancels threads, and destroys instances when the parent is destroyed. It prevents memory leaks and connection buildup.
@@ -427,14 +427,14 @@ Omitting expectedContent — a replace/delete op blindly overwrites whatever is 
 Multiple patches without accounting for shifts — work bottom-to-top to avoid this.
 Using path with names containing dots — use pathArray instead.
 Passing raw numbers for Color3 — use {"_type": "Color3", "r": 255, "g": 0, "b": 0} format.
-Forgetting that changes are undoable — if something goes wrong, use roblox.undo to revert.
+Forgetting that changes are undoable — if something goes wrong, use roblox_undo to revert.
 When Things Fail
 If connected: false, make sure the plugin is installed and Studio is running with "Start Bridge Polling" clicked.
 If a tool returns "Studio is not connected", the plugin hasn't polled recently.
 Ensure HttpService.HttpEnabled is allowed in Studio game settings.
 Make sure the MCP server is running on 127.0.0.1:28650.
 If a patch_script returns CONTENT MISMATCH, re-read the lines and retry.
-If a mutation went wrong, use roblox.undo to revert it.
+If a mutation went wrong, use roblox_undo to revert it.
 Check the plugin's widget log (including the job counter) and Studio Output for error details.
 
 ### Resources
