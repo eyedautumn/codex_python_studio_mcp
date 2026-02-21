@@ -37,9 +37,9 @@ RLAB v3 is designed to resist pattern-matching and force genuine reasoning. Task
 
 ```
 1. studio.get_connection_status           → must return connected: true
-2. roblox.get_properties path="game"
+2. roblox_get_properties path="game"
      properties=["GameId","PlaceId","Name"] → log for run record
-3. roblox.set_waypoint name="RLAB_v3_start"
+3. roblox_set_waypoint name="RLAB_v3_start"
 4. Record wall-clock start time
 ```
 
@@ -63,7 +63,7 @@ ServerScriptService
 
 ## Fixture Code
 
-Create all scripts with `roblox.write_script` exactly as shown. Do not alter fixture content before tasks begin.
+Create all scripts with `roblox_write_script` exactly as shown. Do not alter fixture content before tasks begin.
 
 ### DataPipeline (ModuleScript)
 
@@ -729,14 +729,14 @@ RLAB
         └── MaxRetries (IntValue,    Value=3)
 ```
 
-Read back each `Value` property with `roblox.get_properties` and confirm it matches before proceeding.
+Read back each `Value` property with `roblox_get_properties` and confirm it matches before proceeding.
 
 #### D2 · Attribute Contract
 
 On the `RLAB` folder itself, set these custom attributes:
 - `"BenchmarkVersion"` → `"3.0.0"` (string)
 - `"Strict"` → `true` (boolean)
-- `"TaskCount"` → the **actual number of top-level children of RLAB** at the time you set this attribute. You must call `roblox.get_children` on RLAB first and count — do not hardcode.
+- `"TaskCount"` → the **actual number of top-level children of RLAB** at the time you set this attribute. You must call `roblox_get_children` on RLAB first and count — do not hardcode.
 
 Self-check: `get_attributes` on RLAB and verify all three values.
 
