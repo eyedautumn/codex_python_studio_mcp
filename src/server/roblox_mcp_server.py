@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """
-Roblox Studio MCP Bridge Server v0.5
+Roblox Studio MCP Bridge Server v0.6
 - Rich type support (Color3, Vector3, CFrame, etc.)
 - ScriptEditorService integration (open/close/list scripts)
 - ChangeHistoryService integration (undo/redo/waypoints)
 - ThreadingHTTPServer for concurrent requests
 - Short server-side poll timeout
 - UUID-based job IDs
+- NEW v0.6: Bulk tools (bulk_create_instances, bulk_set_properties, bulk_delete_instances,
+             find_and_replace_in_scripts)
 """
 import argparse
 import json
@@ -103,7 +105,7 @@ class JobQueue:
 
 
 class RobloxBridgeHttpHandler(BaseHTTPRequestHandler):
-    server_version = "RobloxMcpBridge/0.5"
+    server_version = "RobloxMcpBridge/0.6"
 
     def do_GET(self):
         parsed = urlparse(self.path)
@@ -201,7 +203,7 @@ class McpServer:
                 "protocolVersion": "2024-11-05",
                 "serverInfo": {
                     "name": "roblox-mcp-bridge",
-                    "version": "0.5",
+                    "version": "0.6",
                 },
                 "capabilities": {"tools": {}},
             }
@@ -324,6 +326,24 @@ def _build_job(name, arguments):
         "roblox.start_stop_play": "start_stop_play",
         "roblox.run_script_in_play_mode": "run_script_in_play_mode",
         "roblox.get_studio_mode": "get_studio_mode",
+        # ── NEW v0.6: Terrain tools ────────────────────────────────────────
+        "roblox.terrain_fill_block":       "terrain_fill_block",
+        "roblox.terrain_fill_ball":        "terrain_fill_ball",
+        "roblox.terrain_fill_cylinder":    "terrain_fill_cylinder",
+        "roblox.terrain_replace_material": "terrain_replace_material",
+        "roblox.terrain_read_voxels":      "terrain_read_voxels",
+        "roblox.terrain_clear_region":     "terrain_clear_region",
+        # ── NEW v0.6: Bulk tools ───────────────────────────────────────────
+        "roblox.bulk_create_instances":        "bulk_create_instances",
+        "roblox.bulk_set_properties":          "bulk_set_properties",
+        "roblox.bulk_delete_instances":        "bulk_delete_instances",
+        "roblox.find_and_replace_in_scripts":  "find_and_replace_in_scripts",
+        # ── NEW v0.6: DataModel tools ──────────────────────────────────────
+        "roblox.get_place_info":       "get_place_info",
+        "roblox.set_lighting":         "set_lighting",
+        "roblox.get_workspace_info":   "get_workspace_info",
+        "roblox.get_team_list":        "get_team_list",
+        "roblox.get_lighting_effects": "get_lighting_effects",
     }
 
     if name not in tool_to_job:
@@ -374,6 +394,13 @@ _INSTANCE_REF_PROPS = {
         "description": "Debug id returned by a previous call.",
     },
     "client_id": {"type": "string"},
+}
+
+_REGION_PROPS = {
+    "regionMin": {"type": "object", "description": '{"x":0,"y":0,"z":0} minimum corner of the region.'},
+    "regionMax": {"type": "object", "description": '{"x":100,"y":50,"z":100} maximum corner.'},
+    "resolution": {"type": "integer", "description": "Voxel resolution in studs (multiple of 4, default 4)."},
+    "client_id":  {"type": "string"},
 }
 
 
@@ -541,13 +568,7 @@ def _build_tools():
             "description": (
                 "Set properties on an instance. Undoable. For complex types, use _type objects: "
                 '{"_type":"Color3","r":255,"g":0,"b":0}, '
-                '{"_type":"Vector3","x":1,"y":2,"z":3}, '
-                '{"_type":"CFrame","components":[x,y,z,r00,r01,r02,r10,r11,r12,r20,r21,r22]}, '
-                '{"_type":"UDim2","xScale":0,"xOffset":100,"yScale":0,"yOffset":50}, '
-                '{"_type":"BrickColor","name":"Really red"}, '
-                '{"_type":"EnumItem","enumType":"Material","name":"Neon"}, '
-                '{"_type":"NumberRange","min":0,"max":10}, '
-                "etc. Simple types (string, number, boolean) are passed directly."
+                '{"_type":"Vector3","x":1,"y":2,"z":3}, etc.'
             ),
             "inputSchema": _ref_schema(
                 extra_props={
@@ -607,10 +628,7 @@ def _build_tools():
             "name": "roblox.write_script",
             "description": (
                 "Overwrite the full Source of a script. Undoable. "
-                "Automatically updates ScriptEditorService if the script is open. "
-                "Basic syntax validation is performed before applying changes. "
-                "WARNING: For partial edits use patch_script instead to avoid accidentally "
-                "replacing or corrupting unrelated code."
+                "WARNING: For partial edits use patch_script instead."
             ),
             "inputSchema": _ref_schema(
                 extra_props={"source": {"type": "string"}},
@@ -621,15 +639,8 @@ def _build_tools():
             "name": "roblox.patch_script",
             "description": (
                 "Apply line-based patches to a script without rewriting the entire source. Undoable. "
-                "Automatically updates ScriptEditorService if the script is open. "
-                "Provide an array of patch operations applied sequentially. "
-                "Each patch: {op, lineStart, lineEnd, content, expectedContent, expectedContext}. "
-                "Ops: 'insert' (before lineStart, REQUIRES expectedContext), 'replace' (lineStart..lineEnd inclusive), "
-                "'delete' (lineStart..lineEnd inclusive), 'append' (end), 'prepend' (beginning). "
-                "Line numbers are 1-indexed, refer to state after previous patches. "
-                "SAFETY: For 'insert', ALWAYS provide 'expectedContext' (the line before insertion point) to prevent unsafe mid-function insertions. "
-                "For 'replace' and 'delete', ALWAYS provide 'expectedContent'. "
-                "Indentation is automatically preserved. Basic syntax validation is performed before applying patches."
+                "Ops: insert, replace, delete, append, prepend. "
+                "ALWAYS provide expectedContent for replace/delete and expectedContext for insert."
             ),
             "inputSchema": _ref_schema(
                 extra_props={
@@ -638,10 +649,7 @@ def _build_tools():
                         "items": {
                             "type": "object",
                             "properties": {
-                                "op": {
-                                    "type": "string",
-                                    "enum": ["insert", "replace", "delete", "append", "prepend"],
-                                },
+                                "op": {"type": "string", "enum": ["insert", "replace", "delete", "append", "prepend"]},
                                 "lineStart": {"type": "integer"},
                                 "lineEnd": {"type": "integer"},
                                 "content": {"type": "string"},
@@ -657,10 +665,7 @@ def _build_tools():
         },
         {
             "name": "roblox.get_script_lines",
-            "description": (
-                "Read a specific line range from a script. "
-                "Omit startLine/endLine to get line count only (no content)."
-            ),
+            "description": "Read a specific line range from a script. Omit startLine/endLine to get line count only.",
             "inputSchema": _ref_schema(
                 extra_props={
                     "startLine": {"type": "integer"},
@@ -712,7 +717,7 @@ def _build_tools():
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "code": {"type": "string", "description": "Lua source executed inside Studio."},
+                    "code": {"type": "string"},
                     "client_id": {"type": "string"},
                 },
                 "required": ["code"],
@@ -724,7 +729,7 @@ def _build_tools():
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "assetId": {"type": "string", "description": "Roblox asset ID to insert."},
+                    "assetId": {"type": "string"},
                     "client_id": {"type": "string"},
                 },
                 "required": ["assetId"],
@@ -736,14 +741,8 @@ def _build_tools():
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "since": {
-                        "type": "number",
-                        "description": "Only return log entries whose timestamp is >= this Unix time.",
-                    },
-                    "maxEntries": {
-                        "type": "integer",
-                        "description": "Limit the number of log lines returned (default 400).",
-                    },
+                    "since": {"type": "number"},
+                    "maxEntries": {"type": "integer"},
                     "client_id": {"type": "string"},
                 },
             },
@@ -754,8 +753,8 @@ def _build_tools():
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "mode": {"type": "string", "description": "Target run mode (e.g. Play)."},
-                    "action": {"type": "string", "description": "Alias for mode (Start, Stop, Run)."},
+                    "mode": {"type": "string"},
+                    "action": {"type": "string"},
                     "client_id": {"type": "string"},
                 },
                 "required": ["mode"],
@@ -763,7 +762,7 @@ def _build_tools():
         },
         {
             "name": "roblox.get_studio_mode",
-            "description": "Query the current Studio run mode (Play/Run/Edit) and whether play mode is active.",
+            "description": "Query the current Studio run mode and whether play mode is active.",
             "inputSchema": {
                 "type": "object",
                 "properties": {"client_id": {"type": "string"}},
@@ -775,7 +774,7 @@ def _build_tools():
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "code": {"type": "string", "description": "Lua source executed while running."},
+                    "code": {"type": "string"},
                     "client_id": {"type": "string"},
                 },
                 "required": ["code"],
@@ -784,14 +783,9 @@ def _build_tools():
         # -- ScriptEditorService ------------------------------------------------
         {
             "name": "roblox.open_script",
-            "description": (
-                "Open a script in the Studio script editor tab and optionally navigate to a line. "
-                "Uses ScriptEditorService:OpenScriptDocumentAsync."
-            ),
+            "description": "Open a script in the Studio script editor tab and optionally navigate to a line.",
             "inputSchema": _ref_schema(
-                extra_props={
-                    "line": {"type": "integer", "description": "Line number to navigate to (default 1)."},
-                }
+                extra_props={"line": {"type": "integer"}}
             ),
         },
         {
@@ -811,47 +805,308 @@ def _build_tools():
         {
             "name": "roblox.undo",
             "description": "Undo the last action in Studio. Equivalent to Ctrl+Z.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {"client_id": {"type": "string"}},
-            },
+            "inputSchema": {"type": "object", "properties": {"client_id": {"type": "string"}}},
         },
         {
             "name": "roblox.redo",
             "description": "Redo the last undone action in Studio. Equivalent to Ctrl+Y.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {"client_id": {"type": "string"}},
-            },
+            "inputSchema": {"type": "object", "properties": {"client_id": {"type": "string"}}},
         },
         {
             "name": "roblox.set_waypoint",
-            "description": (
-                "Set a named undo/redo waypoint. "
-                "All MCP mutations already create automatic waypoints, but you can add explicit ones "
-                "to group a series of changes under a single undo step."
-            ),
+            "description": "Set a named undo/redo waypoint.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "name": {"type": "string", "description": "Waypoint name (shown in undo history)."},
+                    "name": {"type": "string"},
                     "client_id": {"type": "string"},
                 },
             },
         },
         {
-           "name": "roblox.get_all_properties",
-           "description": (
-            "Read ALL properties from an instance using ReflectionService. "
-            "Returns every readable, non-deprecated property with its current value "
-            "as rich type objects. Use this when you need a complete snapshot of an "
-            "instance, such as when saving UI templates. This always reflects the "
-            "latest engine properties, including newly added ones. "
-            "For reading specific known properties, prefer get_properties instead."
-        ),
-    "inputSchema": _ref_schema(),
-       },
+            "name": "roblox.get_all_properties",
+            "description": (
+                "Read ALL properties from an instance using ReflectionService. "
+                "Returns every readable, non-deprecated property with its current value."
+            ),
+            "inputSchema": _ref_schema(),
+        },
+
+        # ── NEW v0.6: Terrain tools ────────────────────────────────────────────
+        {
+            "name": "roblox.terrain_fill_block",
+            "description": (
+                "Fill a box-shaped volume with a terrain material. Undoable. "
+                "cframe specifies the centre (position + optional rotation). "
+                "size specifies the bounding box in studs. "
+                "Common materials: Grass, Rock, Water, Sand, Snow, Ground, Mud, Asphalt, Brick, Concrete, Ice, Salt, Sandstone, Slate, SmoothPlastic, WoodPlanks."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "cframe": {
+                        "type": "object",
+                        "description": 'Position as {"x":0,"y":0,"z":0} or full 12-component CFrame {"components":[…]}.',
+                    },
+                    "size": {"type": "object", "description": '{"x":10,"y":5,"z":10} in studs.'},
+                    "material": {"type": "string", "description": "Terrain material name."},
+                    "client_id": {"type": "string"},
+                },
+                "required": ["cframe", "size", "material"],
+            },
+        },
+        {
+            "name": "roblox.terrain_fill_ball",
+            "description": "Fill a sphere of terrain material at a given centre and radius. Undoable.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "center":   {"type": "object", "description": '{"x":0,"y":0,"z":0}'},
+                    "radius":   {"type": "number",  "description": "Radius in studs."},
+                    "material": {"type": "string"},
+                    "client_id": {"type": "string"},
+                },
+                "required": ["center", "radius", "material"],
+            },
+        },
+        {
+            "name": "roblox.terrain_fill_cylinder",
+            "description": (
+                "Fill a cylinder of terrain material. Undoable. "
+                "The cylinder axis is aligned with the CFrame's Y axis."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "cframe":    {"type": "object", "description": 'Centre of the cylinder {"x":0,"y":0,"z":0}.'},
+                    "height":    {"type": "number", "description": "Height of the cylinder in studs."},
+                    "radius":    {"type": "number", "description": "Radius of the cylinder in studs."},
+                    "material":  {"type": "string"},
+                    "client_id": {"type": "string"},
+                },
+                "required": ["cframe", "height", "radius", "material"],
+            },
+        },
+        {
+            "name": "roblox.terrain_replace_material",
+            "description": (
+                "Replace every voxel of one terrain material with another inside a Region3. Undoable. "
+                "Great for large-scale reskins, e.g. swap all Sand → Ground across a level."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    **_REGION_PROPS,
+                    "from": {"type": "string", "description": "Material to replace (e.g. Sand)."},
+                    "to":   {"type": "string", "description": "Replacement material (e.g. Ground)."},
+                },
+                "required": ["regionMin", "regionMax", "from", "to"],
+            },
+        },
+        {
+            "name": "roblox.terrain_read_voxels",
+            "description": (
+                "Read terrain voxel data (material + occupancy) from a region. "
+                "For regions ≤4096 voxels: returns full per-voxel list. "
+                "For larger regions: returns a material-frequency summary only. "
+                "Use a higher resolution (16 or 32) to sample large areas without hitting the limit."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": dict(_REGION_PROPS),
+                "required": ["regionMin", "regionMax"],
+            },
+        },
+        {
+            "name": "roblox.terrain_clear_region",
+            "description": "Remove all terrain (fill with Air) within a Region3. Undoable.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "regionMin": {"type": "object"},
+                    "regionMax": {"type": "object"},
+                    "client_id": {"type": "string"},
+                },
+                "required": ["regionMin", "regionMax"],
+            },
+        },
+
+        # ── NEW v0.6: Bulk tools ───────────────────────────────────────────────
+        {
+            "name": "roblox.bulk_create_instances",
+            "description": (
+                "Create up to 200 instances in a single round-trip, all in one undo waypoint. "
+                "Each entry needs className; optionally parentPath/parentPathArray and a properties dict "
+                "that supports _type rich-type objects. "
+                "Much faster than calling create_instance N times for large batch work."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "instances": {
+                        "type": "array",
+                        "maxItems": 200,
+                        "description": "Array of instance specs to create.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "className":       {"type": "string"},
+                                "parentPath":      {"type": "string"},
+                                "parentPathArray": {"type": "array", "items": {"type": "string"}},
+                                "properties":      {"type": "object"},
+                            },
+                            "required": ["className"],
+                        },
+                    },
+                    "client_id": {"type": "string"},
+                },
+                "required": ["instances"],
+            },
+        },
+        {
+            "name": "roblox.bulk_set_properties",
+            "description": (
+                "Set properties on up to 200 instances in one round-trip, wrapped in one undo waypoint. "
+                "Each operation is an instance ref (path/pathArray/id) plus a properties dict. "
+                "Supports rich _type objects. Much faster than N individual set_properties calls."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "operations": {
+                        "type": "array",
+                        "maxItems": 200,
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "path":       {"type": "string"},
+                                "pathArray":  {"type": "array", "items": {"type": "string"}},
+                                "id":         {"type": "string"},
+                                "properties": {"type": "object"},
+                            },
+                            "required": ["properties"],
+                        },
+                    },
+                    "client_id": {"type": "string"},
+                },
+                "required": ["operations"],
+            },
+        },
+        {
+            "name": "roblox.bulk_delete_instances",
+            "description": (
+                "Delete multiple instances in one round-trip, wrapped in one undo waypoint. "
+                "All descendants are destroyed. Provide an array of instance refs."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "instances": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "path":      {"type": "string"},
+                                "pathArray": {"type": "array", "items": {"type": "string"}},
+                                "id":        {"type": "string"},
+                            },
+                        },
+                    },
+                    "client_id": {"type": "string"},
+                },
+                "required": ["instances"],
+            },
+        },
+        {
+            "name": "roblox.find_and_replace_in_scripts",
+            "description": (
+                "Find a plain string in all scripts under an ancestor and replace it everywhere. "
+                "All changes wrapped in one undo waypoint. "
+                "Set dryRun=true to preview matches without modifying. "
+                "caseSensitive defaults to true. maxScripts caps modifications (default 50, max 200). "
+                "Great for renaming a variable, function, or module require path across a codebase."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "find":              {"type": "string",  "description": "Plain string to find."},
+                    "replace":           {"type": "string",  "description": "Replacement string."},
+                    "ancestorPath":      {"type": "string"},
+                    "ancestorPathArray": {"type": "array",   "items": {"type": "string"}},
+                    "caseSensitive":     {"type": "boolean"},
+                    "maxScripts":        {"type": "integer", "description": "Max scripts to modify (default 50)."},
+                    "dryRun":            {"type": "boolean", "description": "Preview without modifying if true."},
+                    "client_id":         {"type": "string"},
+                },
+                "required": ["find", "replace"],
+            },
+        },
+
+        # ── NEW v0.6: DataModel tools ──────────────────────────────────────────
+        {
+            "name": "roblox.get_place_info",
+            "description": (
+                "Return metadata about the currently open place: PlaceId, GameId, name, "
+                "PlaceVersion, gravity, StreamingEnabled, all Lighting service properties, "
+                "and a summary of child counts for each major service."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {"client_id": {"type": "string"}},
+            },
+        },
+        {
+            "name": "roblox.set_lighting",
+            "description": (
+                "Set one or more Lighting service properties. Undoable. "
+                "Supports rich _type objects for Color3 values. "
+                "Useful properties: TimeOfDay ('14:00:00'), Brightness, FogEnd, FogStart, "
+                "FogColor, GlobalShadows, Technology (EnumItem with enumType='Technology')."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "properties": {
+                        "type": "object",
+                        "description": "Key/value map of Lighting properties to set.",
+                    },
+                    "client_id": {"type": "string"},
+                },
+                "required": ["properties"],
+            },
+        },
+        {
+            "name": "roblox.get_workspace_info",
+            "description": (
+                "Return key Workspace-level settings useful for level design: "
+                "Gravity, StreamingEnabled, streaming radii, wind settings, and the current camera CFrame."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {"client_id": {"type": "string"}},
+            },
+        },
+        {
+            "name": "roblox.get_team_list",
+            "description": "Return all teams in the Teams service with their BrickColor and AutoAssignable setting.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {"client_id": {"type": "string"}},
+            },
+        },
+        {
+            "name": "roblox.get_lighting_effects",
+            "description": (
+                "Return all post-processing and lighting effects under the Lighting service "
+                "(Bloom, DepthOfField, ColorCorrection, SunRays, etc.) including their key property values."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {"client_id": {"type": "string"}},
+            },
+        },
     ]
+
 
 def main():
     parser = argparse.ArgumentParser(description="Roblox Studio MCP bridge")
