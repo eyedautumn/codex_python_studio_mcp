@@ -254,7 +254,7 @@ def register_claude_desktop(server_script_path):
                 warn(f"Could not parse existing config at {cfg_path}; it will be rewritten.")
 
     cfg.setdefault("mcpServers", {})
-    cfg["mcpServers"]["roblox-studio-mcp"] = {
+    cfg["mcpServers"]["robloxStudio"] = {
         "command": python_cmd(),
         "args": [server_script_path],
     }
@@ -284,7 +284,7 @@ def register_claude_code(server_script_path):
             "command": python_cmd(),
             "args": [server_script_path],
         })
-        cmd2 = ["claude", "mcp", "add-json", "roblox-studio-mcp", json_blob]
+        cmd2 = ["claude", "mcp", "add-json", "robloxStudio", json_blob]
         r2 = subprocess.run(cmd2, capture_output=True, text=True)
         if r2.returncode == 0:
             ok("Registered with Claude Code via add-json.")
@@ -306,7 +306,7 @@ def register_codex(server_script_path):
     """
     if shutil.which("codex"):
         cmd = [
-            "codex", "mcp", "add", "roblox-studio-mcp", "--",
+            "codex", "mcp", "add", "robloxStudio", "--",
             python_cmd(), server_script_path,
         ]
         result = subprocess.run(cmd, capture_output=True, text=True)
