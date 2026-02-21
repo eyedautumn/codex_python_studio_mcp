@@ -1,5 +1,5 @@
--- src/plugin/main.luau
--- Roblox Studio MCP Bridge Plugin v0.5
+-- src/plugin/init.plugin.luau
+-- Roblox Studio MCP Bridge Plugin v0.6
 -- Entry point: builds UI, registers handlers, and runs the polling loop.
 
 local HttpService = game:GetService("HttpService")
@@ -12,6 +12,10 @@ local ScriptTools   = require(script.Parent.Tools.ScriptTools)
 local EditorTools   = require(script.Parent.Tools.EditorTools)
 local HistoryTools  = require(script.Parent.Tools.HistoryTools)
 local StudioTools   = require(script.Parent.Tools.StudioTools)
+-- v0.6 additions
+local TerrainTools   = require(script.Parent.Tools.TerrainTools)
+local BulkTools      = require(script.Parent.Tools.BulkTools)
+local DataModelTools = require(script.Parent.Tools.DataModelTools)
 
 local BRIDGE_URL         = "http://127.0.0.1:28650"
 local CLIENT_ID          = "studio"
@@ -148,8 +152,8 @@ local handlers = {
 	get_attributes    = PropertyTools.get_attributes,
 	set_attributes    = PropertyTools.set_attributes,
 	-- Tags
-	get_tags  = TagTools.get_tags,
-	add_tag   = TagTools.add_tag,
+	get_tags   = TagTools.get_tags,
+	add_tag    = TagTools.add_tag,
 	remove_tag = TagTools.remove_tag,
 	-- Scripts
 	read_script           = ScriptTools.read_script,
@@ -174,6 +178,27 @@ local handlers = {
 	start_stop_play         = StudioTools.start_stop_play,
 	get_studio_mode         = StudioTools.get_studio_mode,
 	run_script_in_play_mode = StudioTools.run_script_in_play_mode,
+
+	-- ── v0.6: Terrain ──────────────────────────────────────────────────────
+	terrain_fill_block       = TerrainTools.terrain_fill_block,
+	terrain_fill_ball        = TerrainTools.terrain_fill_ball,
+	terrain_fill_cylinder    = TerrainTools.terrain_fill_cylinder,
+	terrain_replace_material = TerrainTools.terrain_replace_material,
+	terrain_read_voxels      = TerrainTools.terrain_read_voxels,
+	terrain_clear_region     = TerrainTools.terrain_clear_region,
+
+	-- ── v0.6: Bulk ─────────────────────────────────────────────────────────
+	bulk_create_instances       = BulkTools.bulk_create_instances,
+	bulk_set_properties         = BulkTools.bulk_set_properties,
+	bulk_delete_instances       = BulkTools.bulk_delete_instances,
+	find_and_replace_in_scripts = BulkTools.find_and_replace_in_scripts,
+
+	-- ── v0.6: DataModel ────────────────────────────────────────────────────
+	get_place_info       = DataModelTools.get_place_info,
+	set_lighting         = DataModelTools.set_lighting,
+	get_workspace_info   = DataModelTools.get_workspace_info,
+	get_team_list        = DataModelTools.get_team_list,
+	get_lighting_effects = DataModelTools.get_lighting_effects,
 }
 
 ---------------------------------------------------------------------------
@@ -271,4 +296,4 @@ end
 startButton.MouseButton1Click:Connect(startPolling)
 stopButton.MouseButton1Click:Connect(stopPolling)
 
-log("MCP Bridge plugin v0.5 loaded. Press 'Start Bridge Polling' to begin.")
+log("MCP Bridge plugin v0.6 loaded. Press 'Start Bridge Polling' to begin.")
