@@ -1,18 +1,22 @@
 # Roblox Studio MCP Bridge
-
 ![Build](https://github.com/eyedautumn/codex_python_studio_mcp/actions/workflows/build.yml/badge.svg)
 
 A Roblox Studio plugin that bridges Studio to an external MCP (Model Context Protocol) server over HTTP, enabling AI tools to read and manipulate your game's hierarchy, scripts, properties, and more.
 
-## Installation wizard (.py)
-1. Download/clone this repo.
-2. Run install.py
+## Installation
+
+### Option A — Installer script (recommended)
+
+1. Go to the [**Releases**](../../releases) page and download `install.py` (requires Python 3.8+) **or** a standalone executable for your platform:
+   - **Linux:** `install-linux`
+   - **macOS:** `install-macos` *(right-click → Open on first run to bypass Gatekeeper)*
+   - **Windows:** `install-windows.exe`
+2. Run the installer — it will walk you through plugin placement and MCP server registration for Claude Desktop, Claude Code, or OpenAI Codex.
 3. Open Roblox Studio. The **Roblox MCP** toolbar button will appear.
 4. Enable **HTTP Requests** in *Game Settings → Security* (the plugin will attempt this automatically).
-5. Start your MCP bridge server on `http://127.0.0.1:28650`.
-6. Click **Start Bridge Polling** in the plugin widget.
+5. Click **Start Bridge Polling** in the plugin widget.
 
-## Installation (manual)
+### Option B — Manual plugin install
 
 1. Go to the [**Releases**](../../releases) page and download `RobloxMcpBridge.rbxm`.  
    — or —  
@@ -20,10 +24,31 @@ A Roblox Studio plugin that bridges Studio to an external MCP (Model Context Pro
 2. Place `RobloxMcpBridge.rbxm` in your Roblox **Plugins** folder:
    - **Windows:** `%LOCALAPPDATA%\Roblox\Plugins\`
    - **macOS:** `~/Documents/Roblox/Plugins/`
+   - **Linux (Sober/Flatpak):** `~/.var/app/org.vinegarhq.Sober/data/roblox/Plugins/`
+   - **Linux (Vinegar/Wine):** `~/.var/app/org.vinegarhq.Vinegar/data/prefixes/studio/drive_c/users/<user>/AppData/Local/Roblox/Plugins/`
 3. Open Roblox Studio. The **Roblox MCP** toolbar button will appear.
 4. Enable **HTTP Requests** in *Game Settings → Security* (the plugin will attempt this automatically).
 5. Start your MCP bridge server on `http://127.0.0.1:28650`.
 6. Click **Start Bridge Polling** in the plugin widget.
+
+### Option C — Register MCP server manually
+
+If you already have the plugin installed, add this to your AI client's config:
+
+```json
+{
+  "mcpServers": {
+    "roblox-studio-mcp": {
+      "command": "python3",
+      "args": ["/path/to/roblox_mcp_server.py"]
+    }
+  }
+}
+```
+
+- **Claude Desktop:** `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows)
+- **Claude Code:** `claude mcp add roblox-studio-mcp --scope user -- python3 /path/to/roblox_mcp_server.py`
+- **OpenAI Codex:** `~/.codex/config.toml`
 
 ## Building locally (Rojo)
 
