@@ -280,70 +280,70 @@ def _build_job(name, arguments):
     job_id = f"job_{uuid.uuid4().hex[:12]}"
     tool_to_job = {
         # Instance tools
-        "roblox.list_services": "list_services",
-        "roblox.get_children": "get_children",
-        "roblox.get_descendants": "get_descendants",
-        "roblox.get_instance": "get_instance",
-        "roblox.find_instances": "find_instances",
-        "roblox.create_instance": "create_instance",
-        "roblox.delete_instance": "delete_instance",
-        "roblox.clone_instance": "clone_instance",
-        "roblox.reparent_instance": "reparent_instance",
-        "roblox.set_name": "set_name",
-        "roblox.select_instance": "select_instance",
-        "roblox.get_tree": "get_tree",
+        "roblox_list_services": "list_services",
+        "roblox_get_children": "get_children",
+        "roblox_get_descendants": "get_descendants",
+        "roblox_get_instance": "get_instance",
+        "roblox_find_instances": "find_instances",
+        "roblox_create_instance": "create_instance",
+        "roblox_delete_instance": "delete_instance",
+        "roblox_clone_instance": "clone_instance",
+        "roblox_reparent_instance": "reparent_instance",
+        "roblox_set_name": "set_name",
+        "roblox_select_instance": "select_instance",
+        "get_tree": "get_tree",
         # Property / Attribute tools
-        "roblox.get_attributes": "get_attributes",
-        "roblox.set_attributes": "set_attributes",
-        "roblox.get_properties": "get_properties",
-        "roblox.set_properties": "set_properties",
+        "get_attributes": "get_attributes",
+        "set_attributes": "set_attributes",
+        "get_properties": "get_properties",
+        "set_properties": "set_properties",
         # Tag tools
-        "roblox.get_tags": "get_tags",
-        "roblox.add_tag": "add_tag",
-        "roblox.remove_tag": "remove_tag",
+        "get_tags": "get_tags",
+        "add_tag": "add_tag",
+        "remove_tag": "remove_tag",
         # Script tools
-        "roblox.read_script": "read_script",
-        "roblox.write_script": "write_script",
-        "roblox.patch_script": "patch_script",
-        "roblox.get_script_lines": "get_script_lines",
-        "roblox.search_script": "search_script",
-        "roblox.get_script_functions": "get_script_functions",
-        "roblox.search_across_scripts": "search_across_scripts",
+        "read_script": "read_script",
+        "write_script": "write_script",
+        "patch_script": "patch_script",
+        "get_script_lines": "get_script_lines",
+        "search_script": "search_script",
+        "get_script_functions": "get_script_functions",
+        "search_across_scripts": "search_across_scripts",
         # Selection
-        "roblox.get_selection": "get_selection",
+        "get_selection": "get_selection",
         # ScriptEditorService
-        "roblox.open_script": "open_script",
-        "roblox.get_open_scripts": "get_open_scripts",
-        "roblox.close_script": "close_script",
+        "open_script": "open_script",
+        "get_open_scripts": "get_open_scripts",
+        "close_script": "close_script",
         # ChangeHistoryService
-        "roblox.undo": "undo",
-        "roblox.redo": "redo",
-        "roblox.set_waypoint": "set_waypoint",
-        "roblox.get_all_properties": "get_all_properties",
-        "roblox.run_code": "run_code",
-        "roblox.insert_model": "insert_model",
-        "roblox.get_console_output": "get_console_output",
-        "roblox.start_stop_play": "start_stop_play",
-        "roblox.run_script_in_play_mode": "run_script_in_play_mode",
-        "roblox.get_studio_mode": "get_studio_mode",
+        "roblox_undo": "undo",
+        "roblox_redo": "redo",
+        "roblox_set_waypoint": "set_waypoint",
+        "roblox_get_all_properties": "get_all_properties",
+        "roblox_run_code": "run_code",
+        "roblox_insert_model": "insert_model",
+        "roblox_get_console_output": "get_console_output",
+        "roblox_start_stop_play": "start_stop_play",
+        "roblox_run_script_in_play_mode": "run_script_in_play_mode",
+        "roblox_get_studio_mode": "get_studio_mode",
         # ── NEW v0.6: Terrain tools ────────────────────────────────────────
-        "roblox.terrain_fill_block":       "terrain_fill_block",
-        "roblox.terrain_fill_ball":        "terrain_fill_ball",
-        "roblox.terrain_fill_cylinder":    "terrain_fill_cylinder",
-        "roblox.terrain_replace_material": "terrain_replace_material",
-        "roblox.terrain_read_voxels":      "terrain_read_voxels",
-        "roblox.terrain_clear_region":     "terrain_clear_region",
+        "roblox_terrain_fill_block":       "terrain_fill_block",
+        "roblox_terrain_fill_ball":        "terrain_fill_ball",
+        "roblox_terrain_fill_cylinder":    "terrain_fill_cylinder",
+        "roblox_terrain_replace_material": "terrain_replace_material",
+        "roblox_terrain_read_voxels":      "terrain_read_voxels",
+        "roblox_terrain_clear_region":     "terrain_clear_region",
         # ── NEW v0.6: Bulk tools ───────────────────────────────────────────
-        "roblox.bulk_create_instances":        "bulk_create_instances",
-        "roblox.bulk_set_properties":          "bulk_set_properties",
-        "roblox.bulk_delete_instances":        "bulk_delete_instances",
-        "roblox.find_and_replace_in_scripts":  "find_and_replace_in_scripts",
+        "roblox_bulk_create_instances":        "bulk_create_instances",
+        "roblox_bulk_set_properties":          "bulk_set_properties",
+        "roblox_bulk_delete_instances":        "bulk_delete_instances",
+        "roblox_find_and_replace_in_scripts":  "find_and_replace_in_scripts",
         # ── NEW v0.6: DataModel tools ──────────────────────────────────────
-        "roblox.get_place_info":       "get_place_info",
-        "roblox.set_lighting":         "set_lighting",
-        "roblox.get_workspace_info":   "get_workspace_info",
-        "roblox.get_team_list":        "get_team_list",
-        "roblox.get_lighting_effects": "get_lighting_effects",
+        "roblox_get_place_info":       "get_place_info",
+        "roblox_set_lighting":         "set_lighting",
+        "roblox_get_workspace_info":   "get_workspace_info",
+        "roblox_get_team_list":        "get_team_list",
+        "roblox_get_lighting_effects": "get_lighting_effects",
     }
 
     if name not in tool_to_job:
@@ -427,7 +427,7 @@ def _build_tools():
         },
         # -- Instance tools -----------------------------------------------------
         {
-            "name": "roblox.list_services",
+            "name": "roblox_list_services",
             "description": "List top-level services in the current place.",
             "inputSchema": {
                 "type": "object",
@@ -435,22 +435,22 @@ def _build_tools():
             },
         },
         {
-            "name": "roblox.get_children",
+            "name": "roblox_get_children",
             "description": "Get the direct children of an instance.",
             "inputSchema": _ref_schema(),
         },
         {
-            "name": "roblox.get_descendants",
+            "name": "roblox_get_descendants",
             "description": "Get all descendants of an instance. Can be large - prefer get_tree for an overview.",
             "inputSchema": _ref_schema(),
         },
         {
-            "name": "roblox.get_instance",
+            "name": "roblox_get_instance",
             "description": "Get info (name, className, fullName) for a single instance.",
             "inputSchema": _ref_schema(),
         },
         {
-            "name": "roblox.find_instances",
+            "name": "roblox_find_instances",
             "description": "Find instances matching name, className, and/or tag under an ancestor.",
             "inputSchema": {
                 "type": "object",
@@ -465,7 +465,7 @@ def _build_tools():
             },
         },
         {
-            "name": "roblox.get_tree",
+            "name": "roblox_get_tree",
             "description": (
                 "Get a compact recursive tree of an instance hierarchy. "
                 "Returns name, className, and for scripts the line count. "
@@ -479,7 +479,7 @@ def _build_tools():
             ),
         },
         {
-            "name": "roblox.create_instance",
+            "name": "roblox_create_instance",
             "description": (
                 "Create a new instance. Set properties (including Name, Source for scripts) "
                 "via the properties dict. Supports rich types via _type objects."
@@ -497,12 +497,12 @@ def _build_tools():
             },
         },
         {
-            "name": "roblox.delete_instance",
+            "name": "roblox_delete_instance",
             "description": "Destroy an instance and all its descendants. Undoable via Ctrl+Z.",
             "inputSchema": _ref_schema(),
         },
         {
-            "name": "roblox.clone_instance",
+            "name": "roblox_clone_instance",
             "description": "Clone an instance (and its descendants). Optionally place under a new parent and rename. Undoable.",
             "inputSchema": _ref_schema(
                 extra_props={
@@ -513,7 +513,7 @@ def _build_tools():
             ),
         },
         {
-            "name": "roblox.reparent_instance",
+            "name": "roblox_reparent_instance",
             "description": "Move an instance to a new parent. Undoable.",
             "inputSchema": _ref_schema(
                 extra_props={
@@ -524,7 +524,7 @@ def _build_tools():
             ),
         },
         {
-            "name": "roblox.set_name",
+            "name": "roblox_set_name",
             "description": "Rename an instance. Undoable.",
             "inputSchema": _ref_schema(
                 extra_props={"name": {"type": "string"}},
@@ -532,13 +532,13 @@ def _build_tools():
             ),
         },
         {
-            "name": "roblox.select_instance",
+            "name": "roblox_select_instance",
             "description": "Select an instance in the Studio Explorer (for visibility).",
             "inputSchema": _ref_schema(),
         },
         # -- Selection ----------------------------------------------------------
         {
-            "name": "roblox.get_selection",
+            "name": "roblox_get_selection",
             "description": "Get the instances currently selected in the Studio Explorer.",
             "inputSchema": {
                 "type": "object",
@@ -547,7 +547,7 @@ def _build_tools():
         },
         # -- Property / Attribute tools -----------------------------------------
         {
-            "name": "roblox.get_properties",
+            "name": "roblox_get_properties",
             "description": (
                 "Read specific properties from an instance. Returns rich type objects with _type field "
                 "for complex types (Color3, Vector3, CFrame, UDim2, BrickColor, EnumItem, etc.)."
@@ -564,7 +564,7 @@ def _build_tools():
             ),
         },
         {
-            "name": "roblox.set_properties",
+            "name": "roblox_set_properties",
             "description": (
                 "Set properties on an instance. Undoable. For complex types, use _type objects: "
                 '{"_type":"Color3","r":255,"g":0,"b":0}, '
@@ -581,12 +581,12 @@ def _build_tools():
             ),
         },
         {
-            "name": "roblox.get_attributes",
+            "name": "roblox_get_attributes",
             "description": "Get all custom attributes on an instance. Returns rich type objects for complex attribute values.",
             "inputSchema": _ref_schema(),
         },
         {
-            "name": "roblox.set_attributes",
+            "name": "roblox_set_attributes",
             "description": "Set custom attributes on an instance. Undoable. Supports rich type objects.",
             "inputSchema": _ref_schema(
                 extra_props={"attributes": {"type": "object"}},
@@ -595,12 +595,12 @@ def _build_tools():
         },
         # -- Tag tools ----------------------------------------------------------
         {
-            "name": "roblox.get_tags",
+            "name": "roblox_get_tags",
             "description": "Get all CollectionService tags on an instance.",
             "inputSchema": _ref_schema(),
         },
         {
-            "name": "roblox.add_tag",
+            "name": "roblox_add_tag",
             "description": "Add a CollectionService tag to an instance. Undoable.",
             "inputSchema": _ref_schema(
                 extra_props={"tag": {"type": "string"}},
@@ -608,7 +608,7 @@ def _build_tools():
             ),
         },
         {
-            "name": "roblox.remove_tag",
+            "name": "roblox_remove_tag",
             "description": "Remove a CollectionService tag from an instance. Undoable.",
             "inputSchema": _ref_schema(
                 extra_props={"tag": {"type": "string"}},
@@ -617,7 +617,7 @@ def _build_tools():
         },
         # -- Script tools -------------------------------------------------------
         {
-            "name": "roblox.read_script",
+            "name": "roblox_read_script",
             "description": (
                 "Read the full Source of a Script/LocalScript/ModuleScript. "
                 "For large scripts prefer get_script_lines to read a specific range."
@@ -625,7 +625,7 @@ def _build_tools():
             "inputSchema": _ref_schema(),
         },
         {
-            "name": "roblox.write_script",
+            "name": "roblox_write_script",
             "description": (
                 "Overwrite the full Source of a script. Undoable. "
                 "WARNING: For partial edits use patch_script instead."
@@ -636,7 +636,7 @@ def _build_tools():
             ),
         },
         {
-            "name": "roblox.patch_script",
+            "name": "roblox_patch_script",
             "description": (
                 "Apply line-based patches to a script without rewriting the entire source. Undoable. "
                 "Ops: insert, replace, delete, append, prepend. "
@@ -664,7 +664,7 @@ def _build_tools():
             ),
         },
         {
-            "name": "roblox.get_script_lines",
+            "name": "roblox_get_script_lines",
             "description": "Read a specific line range from a script. Omit startLine/endLine to get line count only.",
             "inputSchema": _ref_schema(
                 extra_props={
@@ -674,7 +674,7 @@ def _build_tools():
             ),
         },
         {
-            "name": "roblox.search_script",
+            "name": "roblox_search_script",
             "description": "Search a script's source for a string or Lua pattern.",
             "inputSchema": _ref_schema(
                 extra_props={
@@ -688,12 +688,12 @@ def _build_tools():
             ),
         },
         {
-            "name": "roblox.get_script_functions",
+            "name": "roblox_get_script_functions",
             "description": "List all function definitions in a script with line numbers and types.",
             "inputSchema": _ref_schema(),
         },
         {
-            "name": "roblox.search_across_scripts",
+            "name": "roblox_search_across_scripts",
             "description": "Search ALL scripts under an ancestor for a query string.",
             "inputSchema": {
                 "type": "object",
@@ -712,7 +712,7 @@ def _build_tools():
         },
         # -- Studio helpers ------------------------------------------------------
         {
-            "name": "roblox.run_code",
+            "name": "roblox_run_code",
             "description": "Execute arbitrary Lua code within Studio and return a serialized result.",
             "inputSchema": {
                 "type": "object",
@@ -724,7 +724,7 @@ def _build_tools():
             },
         },
         {
-            "name": "roblox.insert_model",
+            "name": "roblox_insert_model",
             "description": "Insert a Marketplace asset into Workspace using InsertService.",
             "inputSchema": {
                 "type": "object",
@@ -736,7 +736,7 @@ def _build_tools():
             },
         },
         {
-            "name": "roblox.get_console_output",
+            "name": "roblox_get_console_output",
             "description": "Read the buffered Studio Output log captured by the plugin.",
             "inputSchema": {
                 "type": "object",
@@ -748,7 +748,7 @@ def _build_tools():
             },
         },
         {
-            "name": "roblox.start_stop_play",
+            "name": "roblox_start_stop_play",
             "description": "Switch Studio between Edit, Play, Run, or Test modes.",
             "inputSchema": {
                 "type": "object",
@@ -761,7 +761,7 @@ def _build_tools():
             },
         },
         {
-            "name": "roblox.get_studio_mode",
+            "name": "roblox_get_studio_mode",
             "description": "Query the current Studio run mode and whether play mode is active.",
             "inputSchema": {
                 "type": "object",
@@ -769,7 +769,7 @@ def _build_tools():
             },
         },
         {
-            "name": "roblox.run_script_in_play_mode",
+            "name": "roblox_run_script_in_play_mode",
             "description": "Run a Lua snippet while Studio is in Play or Run mode.",
             "inputSchema": {
                 "type": "object",
@@ -782,14 +782,14 @@ def _build_tools():
         },
         # -- ScriptEditorService ------------------------------------------------
         {
-            "name": "roblox.open_script",
+            "name": "roblox_open_script",
             "description": "Open a script in the Studio script editor tab and optionally navigate to a line.",
             "inputSchema": _ref_schema(
                 extra_props={"line": {"type": "integer"}}
             ),
         },
         {
-            "name": "roblox.get_open_scripts",
+            "name": "roblox_get_open_scripts",
             "description": "List all scripts currently open in the Studio script editor.",
             "inputSchema": {
                 "type": "object",
@@ -797,23 +797,23 @@ def _build_tools():
             },
         },
         {
-            "name": "roblox.close_script",
+            "name": "roblox_close_script",
             "description": "Close a script's tab in the Studio script editor.",
             "inputSchema": _ref_schema(),
         },
         # -- ChangeHistoryService -----------------------------------------------
         {
-            "name": "roblox.undo",
+            "name": "roblox_undo",
             "description": "Undo the last action in Studio. Equivalent to Ctrl+Z.",
             "inputSchema": {"type": "object", "properties": {"client_id": {"type": "string"}}},
         },
         {
-            "name": "roblox.redo",
+            "name": "roblox_redo",
             "description": "Redo the last undone action in Studio. Equivalent to Ctrl+Y.",
             "inputSchema": {"type": "object", "properties": {"client_id": {"type": "string"}}},
         },
         {
-            "name": "roblox.set_waypoint",
+            "name": "roblox_set_waypoint",
             "description": "Set a named undo/redo waypoint.",
             "inputSchema": {
                 "type": "object",
@@ -824,7 +824,7 @@ def _build_tools():
             },
         },
         {
-            "name": "roblox.get_all_properties",
+            "name": "roblox_get_all_properties",
             "description": (
                 "Read ALL properties from an instance using ReflectionService. "
                 "Returns every readable, non-deprecated property with its current value."
@@ -834,7 +834,7 @@ def _build_tools():
 
         # ── NEW v0.6: Terrain tools ────────────────────────────────────────────
         {
-            "name": "roblox.terrain_fill_block",
+            "name": "roblox_terrain_fill_block",
             "description": (
                 "Fill a box-shaped volume with a terrain material. Undoable. "
                 "cframe specifies the centre (position + optional rotation). "
@@ -856,7 +856,7 @@ def _build_tools():
             },
         },
         {
-            "name": "roblox.terrain_fill_ball",
+            "name": "roblox_terrain_fill_ball",
             "description": "Fill a sphere of terrain material at a given centre and radius. Undoable.",
             "inputSchema": {
                 "type": "object",
@@ -870,7 +870,7 @@ def _build_tools():
             },
         },
         {
-            "name": "roblox.terrain_fill_cylinder",
+            "name": "roblox_terrain_fill_cylinder",
             "description": (
                 "Fill a cylinder of terrain material. Undoable. "
                 "The cylinder axis is aligned with the CFrame's Y axis."
@@ -888,7 +888,7 @@ def _build_tools():
             },
         },
         {
-            "name": "roblox.terrain_replace_material",
+            "name": "roblox_terrain_replace_material",
             "description": (
                 "Replace every voxel of one terrain material with another inside a Region3. Undoable. "
                 "Great for large-scale reskins, e.g. swap all Sand → Ground across a level."
@@ -904,7 +904,7 @@ def _build_tools():
             },
         },
         {
-            "name": "roblox.terrain_read_voxels",
+            "name": "roblox_terrain_read_voxels",
             "description": (
                 "Read terrain voxel data (material + occupancy) from a region. "
                 "For regions ≤4096 voxels: returns full per-voxel list. "
@@ -918,7 +918,7 @@ def _build_tools():
             },
         },
         {
-            "name": "roblox.terrain_clear_region",
+            "name": "roblox_terrain_clear_region",
             "description": "Remove all terrain (fill with Air) within a Region3. Undoable.",
             "inputSchema": {
                 "type": "object",
@@ -933,7 +933,7 @@ def _build_tools():
 
         # ── NEW v0.6: Bulk tools ───────────────────────────────────────────────
         {
-            "name": "roblox.bulk_create_instances",
+            "name": "roblox_bulk_create_instances",
             "description": (
                 "Create up to 200 instances in a single round-trip, all in one undo waypoint. "
                 "Each entry needs className; optionally parentPath/parentPathArray and a properties dict "
@@ -964,7 +964,7 @@ def _build_tools():
             },
         },
         {
-            "name": "roblox.bulk_set_properties",
+            "name": "roblox_bulk_set_properties",
             "description": (
                 "Set properties on up to 200 instances in one round-trip, wrapped in one undo waypoint. "
                 "Each operation is an instance ref (path/pathArray/id) plus a properties dict. "
@@ -993,7 +993,7 @@ def _build_tools():
             },
         },
         {
-            "name": "roblox.bulk_delete_instances",
+            "name": "roblox_bulk_delete_instances",
             "description": (
                 "Delete multiple instances in one round-trip, wrapped in one undo waypoint. "
                 "All descendants are destroyed. Provide an array of instance refs."
@@ -1018,7 +1018,7 @@ def _build_tools():
             },
         },
         {
-            "name": "roblox.find_and_replace_in_scripts",
+            "name": "roblox_find_and_replace_in_scripts",
             "description": (
                 "Find a plain string in all scripts under an ancestor and replace it everywhere. "
                 "All changes wrapped in one undo waypoint. "
@@ -1044,7 +1044,7 @@ def _build_tools():
 
         # ── NEW v0.6: DataModel tools ──────────────────────────────────────────
         {
-            "name": "roblox.get_place_info",
+            "name": "roblox_get_place_info",
             "description": (
                 "Return metadata about the currently open place: PlaceId, GameId, name, "
                 "PlaceVersion, gravity, StreamingEnabled, all Lighting service properties, "
@@ -1056,7 +1056,7 @@ def _build_tools():
             },
         },
         {
-            "name": "roblox.set_lighting",
+            "name": "roblox_set_lighting",
             "description": (
                 "Set one or more Lighting service properties. Undoable. "
                 "Supports rich _type objects for Color3 values. "
@@ -1076,7 +1076,7 @@ def _build_tools():
             },
         },
         {
-            "name": "roblox.get_workspace_info",
+            "name": "roblox_get_workspace_info",
             "description": (
                 "Return key Workspace-level settings useful for level design: "
                 "Gravity, StreamingEnabled, streaming radii, wind settings, and the current camera CFrame."
@@ -1087,7 +1087,7 @@ def _build_tools():
             },
         },
         {
-            "name": "roblox.get_team_list",
+            "name": "roblox_get_team_list",
             "description": "Return all teams in the Teams service with their BrickColor and AutoAssignable setting.",
             "inputSchema": {
                 "type": "object",
@@ -1095,7 +1095,7 @@ def _build_tools():
             },
         },
         {
-            "name": "roblox.get_lighting_effects",
+            "name": "roblox_get_lighting_effects",
             "description": (
                 "Return all post-processing and lighting effects under the Lighting service "
                 "(Bloom, DepthOfField, ColorCorrection, SunRays, etc.) including their key property values."
