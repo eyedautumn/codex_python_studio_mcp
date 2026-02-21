@@ -236,7 +236,7 @@ class McpServer:
             )
 
     def _call_tool(self, name, arguments):
-        if name == "studio.get_connection_status":
+        if name == "studio_get_connection_status":
             return _tool_result(_get_connection_status(self.job_queue, arguments))
 
         client_id = arguments.get("client_id") or DEFAULT_CLIENT_ID
@@ -418,7 +418,7 @@ def _build_tools():
     return [
         # -- Meta ---------------------------------------------------------------
         {
-            "name": "studio.get_connection_status",
+            "name": "studio_get_connection_status",
             "description": "Check if the Roblox Studio plugin is connected to the bridge.",
             "inputSchema": {
                 "type": "object",
